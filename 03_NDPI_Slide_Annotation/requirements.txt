@@ -1,0 +1,14 @@
+gdal
+glymur
+javabridge
+large_image
+libtiff
+mapnik
+matplotlib
+opencv-python
+openslide-python
+pyproj
+python-bioformats
+pyvips
+scikit-image
+-f https://girder.github.io/large_image_wheels
