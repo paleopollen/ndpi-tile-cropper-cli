@@ -7,7 +7,8 @@ RUN apt-get update && apt-get install -y \
     openslide-tools \
     gdal-bin \
     libtiff-dev \
-    default-jdk \
+    openjdk-17-jdk-headless \
+    ca-certificates-java \
     python3-opencv \
 && rm -rf /var/lib/apt/lists/*
 

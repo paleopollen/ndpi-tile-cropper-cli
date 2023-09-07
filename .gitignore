@@ -170,3 +170,7 @@ cython_debug/
 # PyCharm
 .idea/
 
+# NDPI images
+
+*.ndpi
+
