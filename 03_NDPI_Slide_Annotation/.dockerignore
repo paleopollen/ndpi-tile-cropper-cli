@@ -17,3 +17,6 @@ ipython_config.py
 
 # NDPI images
 *.ndpi
+
+# Other images
+*.png
