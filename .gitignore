@@ -171,6 +171,11 @@ cython_debug/
 .idea/
 
 # NDPI images
-
 *.ndpi
+
+# Data folder
+03_NDPI_Slide_Annotation/PAL1999/
+
+# Output folder
+03_NDPI_Slide_Annotation/Output/
 
