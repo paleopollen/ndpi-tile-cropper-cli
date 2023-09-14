@@ -20,3 +20,6 @@ ipython_config.py
 
 # Other images
 *.png
+
+# .env file
+.env
