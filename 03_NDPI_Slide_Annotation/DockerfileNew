@@ -1,0 +1,25 @@
+FROM python:3.9-slim
+
+USER root
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    openslide-tools \
+    gdal-bin \
+    libtiff-dev \
+    openjdk-17-jdk-headless \
+    ca-certificates-java \
+    python3-opencv \
+    nano \
+&& rm -rf /var/lib/apt/lists/*
+
+USER ${NB_UID}
+
+COPY requirements.txt ./
+
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+COPY 03_00_ndpi_cropping.py ./
+
+CMD [ "python3", "03_00_ndpi_cropping.py"]
+
