@@ -39,11 +39,13 @@ class NDPITileCropperCLI(object):
         parser.add_argument(
             '--input-file', '-i',
             nargs='?', default=None, required=True,
-            help='Path to the input NDPISlide file.')
+            help='Path to the input NDPISlide file. E.g., data/NDPI/NDPI_1.ndpi')
         parser.add_argument(
             '--output-dir', '-o',
-            nargs='?', default="Output", required=False,
-            help='Path to the output directory.')
+            nargs='?', default=None, required=False,
+            help='Path to the output directory. E.g., data/NDPI/NDPI_1_tiles. If no output directory path is provided, '
+                 'the program will create a directory using the input file\'s name and save the tiles in that '
+                 'directory.')
         parser.add_argument(
             '--tile_size', '-s',
             type=int,
@@ -70,10 +72,13 @@ class NDPITileCropperCLI(object):
 class NDPIFileCropper:
     """Crop tiles from an NDPISlide."""
 
-    def __init__(self, input_file, output_dir, tile_size=1024, tile_overlap=0, tile_format='png'):
+    def __init__(self, input_file, output_dir=None, tile_size=1024, tile_overlap=0, tile_format='png'):
         """Initialize an NDPIFileCropper instance."""
         self.input_file = input_file
-        self.output_dir = output_dir
+        if output_dir is None:
+            self.output_dir = os.path.dirname(self.input_file)
+        else:
+            self.output_dir = output_dir
         self.tile_size = tile_size
         self.tile_overlap = tile_overlap
         self.tile_format = tile_format
@@ -112,9 +117,9 @@ class NDPIFileCropper:
     def crop_tiles(self):
         """Crop tiles from an NDPISlide."""
         logger.info("Crop tiles from an NDPISlide.")
-        img_name = os.path.basename(self.input_file).split(' ')[0]
-        core_name = self.input_file.split('/')[-2].split('_')[0]
-        crops_dir = os.path.join('Output/', core_name, core_name + '_tiles', img_name)
+        img_name = os.path.basename(self.input_file).split(' ')[0].split('.')[0]
+        # core_name = self.input_file.split('/')[-2].split('_')[0]
+        crops_dir = os.path.join(self.output_dir, img_name)
         if not os.path.exists(crops_dir):
             os.makedirs(crops_dir)
 

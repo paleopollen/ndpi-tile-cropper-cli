@@ -18,6 +18,12 @@ Example command:
 docker run -it --rm -v $(pwd)/data:/data --name ndpi-tile-cropper-container ndpi-tile-cropper -i /data/NDPI/NDPI_1.ndpi -o /data/NDPI/NDPI_1_tiles
 ```
 
+Help command:
+
+```shell
+docker run -it --rm ndpi-tile-cropper --help
+```
+
 ## Local Installation Instructions (Not Fully Tested)
 
 Recommended Python version: 3.9
@@ -48,9 +54,9 @@ Crop tiles from an NDPISlide.
 optional arguments:
   -h, --help            show this help message and exit
   --input-file [INPUT_FILE], -i [INPUT_FILE]
-                        Path to the input NDPISlide file.
+                        Path to the input NDPISlide file. E.g., data/NDPI/NDPI_1.ndpi
   --output-dir [OUTPUT_DIR], -o [OUTPUT_DIR]
-                        Path to the output directory.
+                        Path to the output directory. E.g., data/NDPI/NDPI_1_tiles. If no output directory path is provided, the program will create a directory using the input file's name and save the tiles in that directory.
   --tile_size TILE_SIZE, -s TILE_SIZE
                         Size of the tiles to crop. Only square tiles are supported at present.
   --tile_overlap TILE_OVERLAP, -l TILE_OVERLAP
