@@ -64,5 +64,3 @@ optional arguments:
   --tile_format {png}   Format of the tiles. [not implemented yet]
   --verbose, -v         Display more details.
 ```
-
-TODO: Add better examples for running, improve requirements.txt.
