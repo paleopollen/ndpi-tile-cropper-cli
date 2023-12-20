@@ -7,7 +7,7 @@ This command-line program to process NDPI images and generate cropped image tile
 ### Build Docker Image
 
 ```shell
-docker build -t ndpi_tile_cropper .
+docker build -t ndpi-tile-cropper .
 ```
 
 ### Run Command Line Interface
@@ -15,7 +15,7 @@ docker build -t ndpi_tile_cropper .
 Example command:
 
 ```shell
-docker run -it --rm -v $(pwd)/data:/data ndpi_tile_cropper -i /data/NDPI/NDPI_1.ndpi -o /data/NDPI/NDPI_1_tiles
+docker run -it --rm -v $(pwd)/data:/data --name ndpi-tile-cropper-container ndpi-tile-cropper -i /data/NDPI/NDPI_1.ndpi -o /data/NDPI/NDPI_1_tiles
 ```
 
 ## Local Installation Instructions (Not Fully Tested)
@@ -59,3 +59,4 @@ optional arguments:
   --verbose, -v         Display more details.
 ```
 
+TODO: Add better examples for running, improve requirements.txt.
