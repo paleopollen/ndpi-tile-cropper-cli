@@ -1,17 +1,61 @@
-# Deep learning and pollen detection in the Open World
+# NDPI Images Cropping Command Line Interface
 
+This command-line program to process NDPI images and generate cropped image tiles at all available focal points is developed based on NDPI images cropping [program](https://github.com/fengzard/open_world_pollen_detection/blob/main/03_NDPI_Slide_Annotation/03_00_ndpi_cropping.ipynb) authored by [@fengzard](https://github.com/fengzard).
 
-Image stack, annotation, and ground-truth mask data can be accessed from the Illinois Databank (Feng et al. 2023): https://databank.illinois.edu/datasets/IDB-5855228?code=xjXBDHYYMDtcHgN1gqQWaYOb2NT_YbUrbfKpBeZkYWc.
+## Docker Installation Instructions
 
-**Authors**: Jennifer T. Feng, Shu Kong, Timme H. Donders, Surangi W. Punyasena
+### Build Docker Image
 
-**Last edited**: March 12, 2023
+```shell
+docker build -t ndpi_tile_cropper .
+```
 
-## Abstract
-1.	Fossil pollen-based paleoclimatic and paleoecological reconstructions rely on visual identifications that can be automated using computer vision. To date, the majority of automated approaches have focused on pollen classification in well-controlled environments, with few existing protocols for pollen detection and whole-slide image processing. Automated pollen detection is prerequisite for high-throughput pollen analysis. New slides captured in the open world potentially introduce rare and novel taxa, making pollen detection in the open world much more challenging than pollen classification in controlled environments.
-2.	We explored pollen detection in the open world by focusing on three significant yet underexplored issues. We first addressed **taxonomic bias** – missed detections of smaller, rarer pollen types. We fused an expert model trained on this minority class with our general pollen detector. We next addressed **domain gaps** – differences in image magnification and resolution across microscopes – by fine-tuning our detector on images from a new imaging domain. Lastly, we developed **continual learning** workflows that integrated expert feedback and allowed detectors to improve over time. We simulated human-in-the-loop annotation of three microscope slides by using a trained detector to detect specimens on new slides, validating the detections and tagging incorrect detections, and using the corrected detections to re-train the detector for the new time period.
-3.	In our experiment addressing taxonomic bias, fusing the expert model with the general detector improved the detection performance measured by mean average precision (mAP) from 73.21% to 75.09%, and increased detection recall by 2%. Recall at the 20% precision level for three small-grained taxa increased 11%, 25%, and 50%. In our experiment addressing domain gaps, fine-tuning the general detector on images from the new domain increased mAP in the new domain from 32.56% to 65.99%. In our experiment addressing continual learning, we increased mAP in consecutive time periods using human-in-the-loop annotations on a held-out validation set from 41.10% to 59.93%.
-4.	Effective pollen detectors open new avenues of paleoecology research, creating long-term, high-quality observational records for paleoclimate analyses, improving the accuracy of diversity estimates, and helping with the discovery of rare pollen types in deep-time material. Our methods can be applied to other visually diverse biological data, including algae, fungal spores, and plant cuticle.
+### Run Command Line Interface
 
-**Keywords:** continual learning, deep learning, domain gaps, open-world, palynology, pollen grain detection, rare species, small grains, taxonomic bias
+Example command:
+
+```shell
+docker run -it --rm -v $(pwd)/data:/data ndpi_tile_cropper -i /data/NDPI/NDPI_1.ndpi -o /data/NDPI/NDPI_1_tiles
+```
+
+## Local Installation Instructions (Not Fully Tested)
+
+Recommended Python version: 3.9
+
+### Setup Virtual Environment
+
+```shell
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### Run Command Line Interface
+
+```shell
+cd src
+python ndpi_tile_cropper_cli.py --help
+```
+
+## Usage
+
+```shell
+usage: ndpi_tile_cropper_cli.py [-h] --input-file [INPUT_FILE] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE] [--tile_overlap TILE_OVERLAP] [--tile_format {png}] [--verbose]
+
+Crop tiles from an NDPISlide.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --input-file [INPUT_FILE], -i [INPUT_FILE]
+                        Path to the input NDPISlide file.
+  --output-dir [OUTPUT_DIR], -o [OUTPUT_DIR]
+                        Path to the output directory.
+  --tile_size TILE_SIZE, -s TILE_SIZE
+                        Size of the tiles to crop. Only square tiles are supported at present.
+  --tile_overlap TILE_OVERLAP, -l TILE_OVERLAP
+                        Overlap of the tiles [not implemented yet].
+  --tile_format {png}   Format of the tiles. [not implemented yet]
+  --verbose, -v         Display more details.
+```
 
