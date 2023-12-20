@@ -1,0 +1,14 @@
+# PyCharm
+.idea/
+
+# Python virtual environment
+venv/
+
+# Git
+.git/
+
+# macOS
+.DS_Store/
+
+# Data
+data/
