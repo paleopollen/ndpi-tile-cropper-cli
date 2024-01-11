@@ -38,9 +38,8 @@ def download_folder(folder_id, download_folder_path):
             download_folder(item.id, new_folder_path)
 
 
-# Collect folder ID and local download path from user
-folder_id = input("Please enter the Box folder ID: ")
-download_folder_path = input("Please enter the local path to save the downloaded files: ")
+folder_id = config["BOX_FOLDER_ID"]
+download_folder_path = config["DOWNLOAD_DIR"]
 
 # Create the local folder if it does not exist
 if not os.path.exists(download_folder_path):
