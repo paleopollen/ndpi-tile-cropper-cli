@@ -42,8 +42,9 @@ def download_folder(folder_id, download_folder_path):
 folder_id = input("Please enter the Box folder ID: ")
 download_folder_path = input("Please enter the local path to save the downloaded files: ")
 
-# Download the folder
-download_folder(folder_id, download_folder_path)
-
+# Create the local folder if it does not exist
 if not os.path.exists(download_folder_path):
     os.makedirs(download_folder_path)
+
+# Download the folder
+download_folder(folder_id, download_folder_path)
