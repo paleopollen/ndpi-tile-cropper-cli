@@ -14,9 +14,36 @@ client = Client(auth)
 user = client.user().get()
 print(f'The current user ID is {user.id}')
 
-folder_path = os.path.join("PAL1999", "C3")
-if not os.path.exists(folder_path):
-    os.makedirs(folder_path)
 
-with open(os.path.join(folder_path, config["FILENAME"]), "wb") as file:
-    client.file(file_id=config["FILE_ID"]).download_to(file)
+def download_folder(folder_id, download_folder_path):
+    """
+    Download the contents of a given Box folder.
+
+    :param folder_id: ID of the Box folder to download.
+    :param download_folder_path: Local path to save the downloaded files.
+    """
+    folder = client.folder(folder_id=folder_id).get()
+    items = folder.get_items()
+    for item in items:
+        if item.type == 'file':
+            file_name = item.name
+            file_path = os.path.join(download_folder_path, file_name)
+            print(f"Start downloading {file_name}...")
+            with open(file_path, 'wb') as file:
+                client.file(file_id=item.id).download_to(file)
+            print(f"Finished downloading {file_name}.")
+        elif item.type == 'folder':
+            new_folder_path = os.path.join(download_folder_path, item.name)
+            os.makedirs(new_folder_path, exist_ok=True)
+            download_folder(item.id, new_folder_path)
+
+
+# Collect folder ID and local download path from user
+folder_id = input("Please enter the Box folder ID: ")
+download_folder_path = input("Please enter the local path to save the downloaded files: ")
+
+# Download the folder
+download_folder(folder_id, download_folder_path)
+
+if not os.path.exists(download_folder_path):
+    os.makedirs(download_folder_path)
