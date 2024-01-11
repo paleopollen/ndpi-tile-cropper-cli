@@ -26,7 +26,7 @@ def get_local_file_sha1(file_path):
     sha1 = hashlib.sha1()
     with open(file_path, 'rb') as file:
         while True:
-            data = file.read(8192)
+            data = file.read(int(config['CHUNK_SIZE']))
             if not data:
                 break
             sha1.update(data)
