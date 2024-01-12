@@ -4,13 +4,14 @@ This command-line program to process NDPI images and generate cropped image tile
 
 ## Docker Installation Instructions
 
-### Build Docker Image
+### Build Docker Images
 
 ```shell
 docker build -t ndpi-tile-cropper .
+docker build -t ndpi-tile-cropper-parallel -f Dockerfile.parallel .
 ```
 
-### Run Command Line Interface
+### Run Command Line Interface (Serial)
 
 Example command:
 
@@ -23,6 +24,23 @@ Help command:
 ```shell
 docker run -it --rm ndpi-tile-cropper --help
 ```
+
+### Run Command Line Interface (Parallel)
+
+The following command will process NDPI files the input folder `/data/NDPI` in parallel mode. By default, it uses 8 processes. The number of processes can be changed by modifying the `--num_processes` or `-n` argument.
+
+Example command:
+
+```shell
+docker run -it --rm -v $(pwd)/data:/data --name ndpi-tile-cropper-container-parallel ndpi-tile-cropper-parallel -i /data/NDPI -o /data/NDPI/output
+```
+
+Help command:
+
+```shell
+docker run -it --rm ndpi-tile-cropper-parallel --help
+```
+
 
 ## Local Installation Instructions (Not Fully Tested)
 
