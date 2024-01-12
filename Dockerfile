@@ -20,10 +20,4 @@ RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 COPY src/ndpi_tile_cropper_cli.py ./
 
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
-
-RUN chown -R appuser:appgroup /usr/src/app
-
-USER appuser
-
 ENTRYPOINT [ "python3", "./ndpi_tile_cropper_cli.py"]
