@@ -5,9 +5,10 @@ import bioformats.formatreader as format_reader
 import javabridge
 import os
 import numpy as np
+import concurrent.futures
 
 from PIL import Image
-from bioformats import logback
+from bioformats import logback, ImageReader
 
 
 class NDPITileCropperCLI(object):
@@ -61,6 +62,12 @@ class NDPITileCropperCLI(object):
             default='png',
             choices=['png'],
             help='Format of the tiles. [not implemented yet]')
+
+        parser.add_argument(
+            '--parallel', '-p',
+            action='store_true',
+            help='Run in parallel')
+
         parser.add_argument(
             '--verbose', '-v',
             action='store_true',
@@ -83,6 +90,7 @@ class NDPIFileCropper:
         self.tile_overlap = tile_overlap
         self.tile_format = tile_format
         self.metadata = dict()
+        self.ImageReader = format_reader.make_image_reader_class()
 
     def read_metadata(self):
         """Read an NDPISlide."""
@@ -104,15 +112,97 @@ class NDPIFileCropper:
 
     def __read_tile(self, x, y, z, width, height):
         """Read a tile from an NDPISlide."""
-        logger.debug("Read a tile from an NDPISlide.")
+        print("Read a tile from an NDPISlide.:", x, y, z)
         img_path = self.input_file
-
-        ImageReader = format_reader.make_image_reader_class()
-        reader = ImageReader()
-        reader.setId(img_path)
-        img = reader.openBytesXYWH(z, x, y, width, height)
-        img.shape = (height, width, 3)
+        with ImageReader(img_path) as reader:
+            img = reader.read(z=z, series=0, rescale=False, XYWH=(x, y, width, height))
+            img.shape = (height, width, 3)
         return img
+
+    def __save_tile(self, img, tile_dir, z):
+        """Save a tile to disk."""
+        logger.debug("Save a tile to disk.")
+        im = Image.fromarray(img)
+        im.save(os.path.join(tile_dir, str(z) + 'z.png'))
+
+    def crop_image(self, i, start_xy_list, crops_dir, width, height):
+        start_x = start_xy_list[i][0]
+        start_y = start_xy_list[i][1]
+        print("Processing coordinates: ", start_x, start_y)
+        tile_dir = os.path.join(crops_dir, str(start_x) + 'x_' + str(start_y) + 'y')
+        if not os.path.exists(tile_dir):
+            os.makedirs(tile_dir)
+        for j in range(self.metadata['z_plane']):
+            print("Processing layer:", i, j)
+            img = self.__read_tile(x=start_x, y=start_y, z=j, width=width, height=height)
+            print("Read image:", i, j)
+            # img.shape = (height, width, 3)
+            # im = Image.fromarray(img)
+            print("Obtained image data:", i, j)
+            # im.save(os.path.join(tile_dir, str(j) + 'z.png'))
+            print("Save layer:", i, j)
+        return i
+
+    def crop_tiles_parallel(self):
+        """Crop tiles from an NDPISlide."""
+        logger.info("Crop tiles from an NDPISlide.")
+        img_name = os.path.basename(self.input_file).split(' ')[0].split('.')[0]
+        # core_name = self.input_file.split('/')[-2].split('_')[0]
+        crops_dir = os.path.join(self.output_dir, img_name)
+        if not os.path.exists(crops_dir):
+            os.makedirs(crops_dir)
+
+        width = self.tile_size
+        height = self.tile_size
+
+        # Find total number of image stacks
+        start_x_list = np.arange(0, self.metadata['width'] - width, width).tolist()
+        start_y_list = np.arange(0, self.metadata['height'] - height, height).tolist()
+        start_xy_list = []
+
+        for i in range(len(start_x_list)):
+            for j in range(len(start_y_list)):
+                x = start_x_list[i]
+                y = start_y_list[j]
+                xy = (x, y)
+                start_xy_list.append(xy)
+
+        logger.info("Number of tiles: " + str(len(start_xy_list)))
+
+        # TODO: This implementation parallelize both tile and layer processing. This may be too much parallelization.
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        #     # Start the load operations and mark each future with its file_id
+        #     future_to_file_index = {executor.submit(
+        #         self.__read_tile, x=start_xy_list[i][0], y=start_xy_list[i][1], z=j, width=width, height=height): i for
+        #                          i in range(len(start_xy_list)) for j in range(self.metadata['z_plane'])}
+        #     for future in concurrent.futures.as_completed(future_to_file_index):
+        #         i = future_to_file_index[future]
+        #         try:
+        #             img = future.result()
+        #         except Exception as exc:
+        #             print('%r generated an exception: %s' % (i, exc), flush=True)
+        #         else:
+        #             start_x = start_xy_list[i][0]
+        #             start_y = start_xy_list[i][1]
+        #             tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
+        #             if not os.path.exists(tile_dir):
+        #                 os.makedirs(tile_dir)
+        #             self.__save_tile(img, tile_dir, i)
+        #             print('Tile ID: %r' % i, flush=True)
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            # Start the load operations and mark each future with its file_id
+            future_to_file_index = {executor.submit(
+                self.crop_image, i=i, start_xy_list=start_xy_list, crops_dir=crops_dir, width=width, height=height): i for
+                                 i in range(len(start_xy_list))}
+            for future in concurrent.futures.as_completed(future_to_file_index):
+                i = future_to_file_index[future]
+                try:
+                    output_i = future.result()
+                except Exception as exc:
+                    print('%r generated an exception: %s' % (i, exc), flush=True)
+                else:
+                    print('Tile ID: %r' % output_i, flush=True)
 
     def crop_tiles(self):
         """Crop tiles from an NDPISlide."""
@@ -143,7 +233,7 @@ class NDPIFileCropper:
         for i in range(len(start_xy_list)):
             start_x = start_xy_list[i][0]
             start_y = start_xy_list[i][1]
-            tile_dir = os.path.join(crops_dir, str(start_x) + 'x_' + str(start_y) + 'y')
+            tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
             if not os.path.exists(tile_dir):
                 os.makedirs(tile_dir)
             for j in range(self.metadata['z_plane']):
@@ -182,7 +272,10 @@ if __name__ == '__main__':
         ndpi_file_cropper = NDPIFileCropper(cli.args.input_file, cli.args.output_dir, cli.args.tile_size,
                                             cli.args.tile_overlap, cli.args.tile_format)
         ndpi_file_cropper.read_metadata()
-        ndpi_file_cropper.crop_tiles()
+        if cli.args.parallel:
+            ndpi_file_cropper.crop_tiles_parallel()
+        else:
+            ndpi_file_cropper.crop_tiles()
 
         javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI")
