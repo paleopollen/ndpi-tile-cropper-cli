@@ -43,6 +43,11 @@ class NDPITileCropperParallelCLI(object):
                  'the program will create a directory using the input file\'s name and save the tiles in that '
                  'directory.')
         parser.add_argument(
+            '--num_processes', '-n',
+            type=int,
+            default=8,
+            help='Number of processes to use for parallel processing.')
+        parser.add_argument(
             '--verbose', '-v',
             action='store_true',
             help='Display more details.')
@@ -75,7 +80,7 @@ class NDPITileCropperParallelCLI(object):
         """Process the files in parallel."""
         logger.info("Processing files in parallel")
         input_files = self._get_input_files()
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.args.num_processes) as executor:
             for input_file in input_files:
                 executor.submit(self._process_file, input_file)
         logger.info("Finished processing files in parallel")
