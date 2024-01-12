@@ -167,7 +167,7 @@ class NDPIFileCropper:
 
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s', level=logging.INFO)
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger("ndpi_tile_cropper_cli.py")
     logger.info("Starting NDPITileCropper CLI")
 
     javabridge.start_vm(class_path=bioformats.JARS)
