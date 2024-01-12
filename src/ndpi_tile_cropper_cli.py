@@ -143,7 +143,7 @@ class NDPIFileCropper:
         for i in range(len(start_xy_list)):
             start_x = start_xy_list[i][0]
             start_y = start_xy_list[i][1]
-            tile_dir = os.path.join(crops_dir, str(start_x) + 'x_' + str(start_y) + 'y')
+            tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
             if not os.path.exists(tile_dir):
                 os.makedirs(tile_dir)
             for j in range(self.metadata['z_plane']):
