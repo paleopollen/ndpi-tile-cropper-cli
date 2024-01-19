@@ -74,9 +74,10 @@ class NDPIFileCropper:
 
     def __init__(self, input_file, output_dir=None, tile_size=1024, tile_overlap=0, tile_format='png'):
         """Initialize an NDPIFileCropper instance."""
-        self.input_file = input_file
+        self.input_file_path = input_file
+        self.input_filename = os.path.basename(self.input_file_path)
         if output_dir is None:
-            self.output_dir = os.path.dirname(self.input_file)
+            self.output_dir = os.path.dirname(self.input_file_path)
         else:
             self.output_dir = output_dir
         self.tile_size = tile_size
@@ -86,8 +87,8 @@ class NDPIFileCropper:
 
     def read_metadata(self):
         """Read an NDPISlide."""
-        logger.info("Read an NDPISlide.")
-        ome_xml = bioformats.get_omexml_metadata(self.input_file)
+        logger.info(self.input_filename + ": Read NDPISlide metadata")
+        ome_xml = bioformats.get_omexml_metadata(self.input_file_path)
         b = bioformats.OMEXML(xml=ome_xml)
 
         calibration = b.image().Pixels.PhysicalSizeX
@@ -104,8 +105,8 @@ class NDPIFileCropper:
 
     def __read_tile(self, x, y, z, width, height):
         """Read a tile from an NDPISlide."""
-        logger.debug("Read a tile from an NDPISlide.")
-        img_path = self.input_file
+        logger.debug(self.input_filename + ": Read a tile from NDPISlide: " + str(x) + "x_" + str(y) + "y_" + str(z) + "z")
+        img_path = self.input_file_path
 
         ImageReader = format_reader.make_image_reader_class()
         reader = ImageReader()
@@ -116,8 +117,8 @@ class NDPIFileCropper:
 
     def crop_tiles(self):
         """Crop tiles from an NDPISlide."""
-        logger.info("Crop tiles from an NDPISlide.")
-        img_name = os.path.basename(self.input_file).split(' ')[0].split('.')[0]
+        logger.info(self.input_filename + ": Crop tiles from NDPISlide")
+        img_name = os.path.basename(self.input_file_path).split(' ')[0].split('.')[0]
         # core_name = self.input_file.split('/')[-2].split('_')[0]
         crops_dir = os.path.join(self.output_dir, img_name)
         if not os.path.exists(crops_dir):
@@ -138,7 +139,7 @@ class NDPIFileCropper:
                 xy = (x, y)
                 start_xy_list.append(xy)
 
-        logger.info("Number of tiles: " + str(len(start_xy_list)))
+        logger.info(self.input_filename + ": Number of tiles: " + str(len(start_xy_list)))
 
         for i in range(len(start_xy_list)):
             start_x = start_xy_list[i][0]
@@ -150,7 +151,7 @@ class NDPIFileCropper:
                 img = self.__read_tile(x=start_x, y=start_y, z=j, width=width, height=height)
                 im = Image.fromarray(img)
                 im.save(os.path.join(tile_dir, str(j) + 'z.png'))
-            logger.info("Tile " + str(i) + " complete.")
+            logger.info(self.input_filename + ": Tile " + str(i) + " complete.")
 
     def _get_tile_size(self):
         """Get the tile size."""

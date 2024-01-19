@@ -31,9 +31,9 @@ class NDPITileCropperParallelCLI(object):
     def _create_parser():
         """Create a parser for the command line arguments."""
         parser = argparse.ArgumentParser(
-            description='Crop tiles from an NDPISlide.')
+            description='Crop tiles from an NDPISlide using parallel processing.')
         parser.add_argument(
-            '--input-dir', '-i',
+            '--input-dir', '-d',
             nargs='?', default=None, required=True,
             help='Path to the input NDPISlide directory. E.g., data/NDPI')
         parser.add_argument(
@@ -64,7 +64,7 @@ class NDPITileCropperParallelCLI(object):
 
     def _process_file(self, input_file):
         """Process a file."""
-        logger.info("Processing file: {}".format(input_file))
+        logger.info("Started processing file: {}".format(input_file))
         if self.args.output_dir:
             output_dir = self.args.output_dir
         else:
@@ -78,7 +78,7 @@ class NDPITileCropperParallelCLI(object):
 
     def process_files_in_parallel(self):
         """Process the files in parallel."""
-        logger.info("Processing files in parallel")
+        logger.info("Started processing files in parallel")
         input_files = self._get_input_files()
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.args.num_processes) as executor:
             for input_file in input_files:
