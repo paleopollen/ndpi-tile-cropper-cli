@@ -83,6 +83,7 @@ optional arguments:
   --tile_overlap TILE_OVERLAP, -l TILE_OVERLAP
                         Overlap of the tiles [not implemented yet].
   --tile_format {png}   Format of the tiles. [not implemented yet]
+  --overwrite, -w       Overwrite existing tiles.
   --verbose, -v         Display more details.
 ```
 
@@ -101,5 +102,6 @@ optional arguments:
                         Path to the output directory. E.g., data/NDPI/NDPI_1_tiles. If no output directory path is provided, the program will create a directory using the input file's name and save the tiles in that directory.
   --num_processes NUM_PROCESSES, -n NUM_PROCESSES
                         Number of processes to use for parallel processing.
+  --overwrite, -w       Overwrite existing tiles.
   --verbose, -v         Display more details.
 ```

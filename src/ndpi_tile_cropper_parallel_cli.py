@@ -48,6 +48,10 @@ class NDPITileCropperParallelCLI(object):
             default=8,
             help='Number of processes to use for parallel processing.')
         parser.add_argument(
+            '--overwrite', '-w',
+            action='store_true',
+            help='Overwrite existing tiles.')
+        parser.add_argument(
             '--verbose', '-v',
             action='store_true',
             help='Display more details.')
@@ -62,7 +66,7 @@ class NDPITileCropperParallelCLI(object):
                 input_files.append(os.path.join(self.args.input_dir, file))
         return input_files
 
-    def _process_file(self, input_file):
+    def __process_file(self, input_file):
         """Process a file."""
         logger.info("Started processing file: {}".format(input_file))
         if self.args.output_dir:
@@ -72,6 +76,12 @@ class NDPITileCropperParallelCLI(object):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         command = ["python", "ndpi_tile_cropper_cli.py", "-i", input_file, "-o", output_dir]
+
+        if self.args.overwrite:
+            command.append("-w")
+        if self.args.verbose:
+            command.append("-v")
+
         result = subprocess.run(command)
         logger.info(result)
         logger.info("Finished processing file: {}".format(input_file))
@@ -82,7 +92,7 @@ class NDPITileCropperParallelCLI(object):
         input_files = self._get_input_files()
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.args.num_processes) as executor:
             for input_file in input_files:
-                executor.submit(self._process_file, input_file)
+                executor.submit(self.__process_file, input_file)
         logger.info("Finished processing files in parallel")
 
 
