@@ -4,6 +4,7 @@ import bioformats
 import bioformats.formatreader as format_reader
 import javabridge
 import os
+import glob
 import numpy as np
 
 from PIL import Image
@@ -52,6 +53,10 @@ class NDPITileCropperCLI(object):
             default=1024,
             help='Size of the tiles to crop. Only square tiles are supported at present.')
         parser.add_argument(
+            '--overwrite', '-w',
+            action='store_true',
+            help='Overwrite existing tiles.')
+        parser.add_argument(
             '--tile_overlap', '-l',
             type=int,
             default=0,
@@ -72,22 +77,24 @@ class NDPITileCropperCLI(object):
 class NDPIFileCropper:
     """Crop tiles from an NDPISlide."""
 
-    def __init__(self, input_file, output_dir=None, tile_size=1024, tile_overlap=0, tile_format='png'):
+    def __init__(self, input_file, output_dir=None, tile_size=1024, tile_overlap=0, tile_format='png', overwrite=False):
         """Initialize an NDPIFileCropper instance."""
-        self.input_file = input_file
+        self.input_file_path = input_file
+        self.input_filename = os.path.basename(self.input_file_path)
         if output_dir is None:
-            self.output_dir = os.path.dirname(self.input_file)
+            self.output_dir = os.path.dirname(self.input_file_path)
         else:
             self.output_dir = output_dir
         self.tile_size = tile_size
         self.tile_overlap = tile_overlap
         self.tile_format = tile_format
+        self.overwrite_flag = overwrite
         self.metadata = dict()
 
     def read_metadata(self):
         """Read an NDPISlide."""
-        logger.info("Read an NDPISlide.")
-        ome_xml = bioformats.get_omexml_metadata(self.input_file)
+        logger.info(self.input_filename + ": Read NDPISlide metadata")
+        ome_xml = bioformats.get_omexml_metadata(self.input_file_path)
         b = bioformats.OMEXML(xml=ome_xml)
 
         calibration = b.image().Pixels.PhysicalSizeX
@@ -104,8 +111,8 @@ class NDPIFileCropper:
 
     def __read_tile(self, x, y, z, width, height):
         """Read a tile from an NDPISlide."""
-        logger.debug("Read a tile from an NDPISlide.")
-        img_path = self.input_file
+        logger.debug(self.input_filename + ": Read a tile from NDPISlide: " + str(x) + "x_" + str(y) + "y_" + str(z) + "z")
+        img_path = self.input_file_path
 
         ImageReader = format_reader.make_image_reader_class()
         reader = ImageReader()
@@ -114,10 +121,15 @@ class NDPIFileCropper:
         img.shape = (height, width, 3)
         return img
 
+    @staticmethod
+    def __count_files(directory, file_extension):
+        files = glob.glob(os.path.join(directory, "*." + file_extension))
+        return len(files)
+
     def crop_tiles(self):
         """Crop tiles from an NDPISlide."""
-        logger.info("Crop tiles from an NDPISlide.")
-        img_name = os.path.basename(self.input_file).split(' ')[0].split('.')[0]
+        logger.info(self.input_filename + ": Crop tiles from NDPISlide")
+        img_name = os.path.basename(self.input_file_path).split(' ')[0].split('.')[0]
         # core_name = self.input_file.split('/')[-2].split('_')[0]
         crops_dir = os.path.join(self.output_dir, img_name)
         if not os.path.exists(crops_dir):
@@ -138,7 +150,7 @@ class NDPIFileCropper:
                 xy = (x, y)
                 start_xy_list.append(xy)
 
-        logger.info("Number of tiles: " + str(len(start_xy_list)))
+        logger.info(self.input_filename + ": Number of tiles: " + str(len(start_xy_list)))
 
         for i in range(len(start_xy_list)):
             start_x = start_xy_list[i][0]
@@ -146,11 +158,18 @@ class NDPIFileCropper:
             tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
             if not os.path.exists(tile_dir):
                 os.makedirs(tile_dir)
-            for j in range(self.metadata['z_plane']):
-                img = self.__read_tile(x=start_x, y=start_y, z=j, width=width, height=height)
-                im = Image.fromarray(img)
-                im.save(os.path.join(tile_dir, str(j) + 'z.png'))
-            logger.info("Tile " + str(i) + " complete.")
+
+            z_plane_image_count = self.__count_files(tile_dir, self.tile_format)
+            # Proceed only if the number of z-plane images is less than the number of z-planes in the image or if the
+            # overwrite flag is set
+            if z_plane_image_count < self.metadata['z_plane'] or self.overwrite_flag:
+                for j in range(self.metadata['z_plane']):
+                    img = self.__read_tile(x=start_x, y=start_y, z=j, width=width, height=height)
+                    im = Image.fromarray(img)
+                    im.save(os.path.join(tile_dir, str(j) + 'z.png'))
+            else:
+                logger.info(self.input_filename + ": Tile " + str(i) + " already exists. Skipping...")
+            logger.info(self.input_filename + ": Tile " + str(i) + " complete.")
 
     def _get_tile_size(self):
         """Get the tile size."""
@@ -167,7 +186,7 @@ class NDPIFileCropper:
 
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s', level=logging.INFO)
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger("ndpi_tile_cropper_cli.py")
     logger.info("Starting NDPITileCropper CLI")
 
     javabridge.start_vm(class_path=bioformats.JARS)
@@ -180,7 +199,7 @@ if __name__ == '__main__':
         cli.print_args()
 
         ndpi_file_cropper = NDPIFileCropper(cli.args.input_file, cli.args.output_dir, cli.args.tile_size,
-                                            cli.args.tile_overlap, cli.args.tile_format)
+                                            cli.args.tile_overlap, cli.args.tile_format, cli.args.overwrite)
         ndpi_file_cropper.read_metadata()
         ndpi_file_cropper.crop_tiles()
 
