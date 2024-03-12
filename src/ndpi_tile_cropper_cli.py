@@ -2,9 +2,10 @@ import argparse
 import logging
 import bioformats
 import bioformats.formatreader as format_reader
-import javabridge
+# import javabridge
 import os
 import glob
+import slideio
 import numpy as np
 
 from PIL import Image
@@ -109,6 +110,17 @@ class NDPIFileCropper:
         self.metadata['height'] = height
         self.metadata['z_plane'] = z_plane
 
+    def read_image(self):
+        """Read an NDPISlide."""
+        logger.info(self.input_filename + ": Read NDPISlide")
+        slide = slideio.open_slide(self.input_file_path, "AUTO")
+        scene = slide.get_scene(0)
+        img = scene.read_block()
+        print(img.num_aux_images)
+        print(img.num_scenes)
+        print(img.file_path)
+        print(img.raw_metadata)
+        return img
     def __read_tile(self, x, y, z, width, height):
         """Read a tile from an NDPISlide."""
         logger.debug(self.input_filename + ": Read a tile from NDPISlide: " + str(x) + "x_" + str(y) + "y_" + str(z) + "z")
@@ -189,10 +201,8 @@ if __name__ == '__main__':
     logger = logging.getLogger("ndpi_tile_cropper_cli.py")
     logger.info("Starting NDPITileCropper CLI")
 
-    javabridge.start_vm(class_path=bioformats.JARS)
-
     try:
-        logback.basic_config()
+        # logback.basic_config()
 
         cli = NDPITileCropperCLI()
         cli.parse_args()
@@ -200,14 +210,17 @@ if __name__ == '__main__':
 
         ndpi_file_cropper = NDPIFileCropper(cli.args.input_file, cli.args.output_dir, cli.args.tile_size,
                                             cli.args.tile_overlap, cli.args.tile_format, cli.args.overwrite)
-        ndpi_file_cropper.read_metadata()
-        ndpi_file_cropper.crop_tiles()
+        # ndpi_file_cropper.read_metadata()
+        ndpi_file_cropper.read_image()
 
-        javabridge.kill_vm()
+        # javabridge.start_vm(class_path=bioformats.JARS)
+        # ndpi_file_cropper.crop_tiles()
+        #
+        # javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI")
     except Exception as e:
         logger.info("Stopping NDPITileCropper CLI")
         logger.error(e, exc_info=True)
     finally:
-        javabridge.kill_vm()
+        # javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI")
