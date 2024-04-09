@@ -43,6 +43,18 @@ class NDPITileCropperParallelCLI(object):
                  'the program will create a directory using the input file\'s name and save the tiles in that '
                  'directory.')
         parser.add_argument(
+            '--tile_size', '-s',
+            type=int,
+            default=1024,
+            required=False,
+            help='Size of the tiles to crop. Only square tiles are supported at present.')
+        parser.add_argument(
+            '--tile_overlap', '-l',
+            type=int,
+            default=0,
+            required=False,
+            help='Overlap of the tiles in pixels.')
+        parser.add_argument(
             '--num_processes', '-n',
             type=int,
             default=8,
@@ -75,7 +87,8 @@ class NDPITileCropperParallelCLI(object):
             output_dir = os.path.splitext(input_file)[0] + "_tiles"
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        command = ["python", "ndpi_tile_cropper_cli.py", "-i", input_file, "-o", output_dir]
+        command = ["python", "ndpi_tile_cropper_cli.py", "-i", input_file, "-o", output_dir, "-s", str(self.args.tile_size),
+                   "-l", str(self.args.tile_overlap)]
 
         if self.args.overwrite:
             command.append("-w")

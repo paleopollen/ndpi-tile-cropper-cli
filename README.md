@@ -32,7 +32,7 @@ The following command will process NDPI files the input folder `/data/NDPI` in p
 Example command:
 
 ```shell
-docker run -it --rm -v $(pwd)/data:/data --name ndpi-tile-cropper-container-parallel ndpi-tile-cropper-parallel -i /data/NDPI -o /data/NDPI/output
+docker run -it --rm -v $(pwd)/data:/data --name ~~ ndpi-tile-cropper-parallel -i /data/NDPI -o /data/NDPI/output
 ```
 
 Help command:
@@ -68,7 +68,7 @@ python ndpi_tile_cropper_cli.py --help
 ### ndpi_tile_cropper_cli
 
 ```shell
-usage: ndpi_tile_cropper_cli.py [-h] --input-file [INPUT_FILE] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE] [--tile_overlap TILE_OVERLAP] [--tile_format {png}] [--verbose]
+usage: ndpi_tile_cropper_cli.py [-h] --input-file [INPUT_FILE] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE] [--overwrite] [--tile_overlap TILE_OVERLAP] [--tile_format {png}] [--verbose]
 
 Crop tiles from an NDPISlide.
 
@@ -80,17 +80,18 @@ optional arguments:
                         Path to the output directory. E.g., data/NDPI/NDPI_1_tiles. If no output directory path is provided, the program will create a directory using the input file's name and save the tiles in that directory.
   --tile_size TILE_SIZE, -s TILE_SIZE
                         Size of the tiles to crop. Only square tiles are supported at present.
-  --tile_overlap TILE_OVERLAP, -l TILE_OVERLAP
-                        Overlap of the tiles [not implemented yet].
-  --tile_format {png}   Format of the tiles. [not implemented yet]
   --overwrite, -w       Overwrite existing tiles.
+  --tile_overlap TILE_OVERLAP, -l TILE_OVERLAP
+                        Overlap of the tiles in pixels.
+  --tile_format {png}   Format of the tiles. [not implemented yet]
   --verbose, -v         Display more details.
+2024-04-09 15:50:04,733 INFO    : ndpi_tile_cropper_cli.py - Stopping NDPITileCropper CLI
 ```
 
 ### ndpi_tile_cropper_cli_parallel
 
 ```shell
-usage: ndpi_tile_cropper_parallel_cli.py [-h] --input-dir [INPUT_DIR] [--output-dir [OUTPUT_DIR]] [--num_processes NUM_PROCESSES] [--verbose]
+usage: ndpi_tile_cropper_parallel_cli.py [-h] --input-dir [INPUT_DIR] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE] [--tile_overlap TILE_OVERLAP] [--num_processes NUM_PROCESSES] [--overwrite] [--verbose]
 
 Crop tiles from an NDPISlide using parallel processing.
 
@@ -100,6 +101,10 @@ optional arguments:
                         Path to the input NDPISlide directory. E.g., data/NDPI
   --output-dir [OUTPUT_DIR], -o [OUTPUT_DIR]
                         Path to the output directory. E.g., data/NDPI/NDPI_1_tiles. If no output directory path is provided, the program will create a directory using the input file's name and save the tiles in that directory.
+  --tile_size TILE_SIZE, -s TILE_SIZE
+                        Size of the tiles to crop. Only square tiles are supported at present.
+  --tile_overlap TILE_OVERLAP, -l TILE_OVERLAP
+                        Overlap of the tiles in pixels.
   --num_processes NUM_PROCESSES, -n NUM_PROCESSES
                         Number of processes to use for parallel processing.
   --overwrite, -w       Overwrite existing tiles.

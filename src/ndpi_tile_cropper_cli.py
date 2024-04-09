@@ -60,7 +60,7 @@ class NDPITileCropperCLI(object):
             '--tile_overlap', '-l',
             type=int,
             default=0,
-            help='Overlap of the tiles [not implemented yet].')
+            help='Overlap of the tiles in pixels.')
         parser.add_argument(
             '--tile_format',
             default='png',
@@ -135,12 +135,13 @@ class NDPIFileCropper:
         if not os.path.exists(crops_dir):
             os.makedirs(crops_dir)
 
-        width = self.tile_size
-        height = self.tile_size
+        width = self._get_tile_size()
+        height = self._get_tile_size()
+        overlap = self._get_tile_overlap()
 
         # Find total number of image stacks
-        start_x_list = np.arange(0, self.metadata['width'] - width, width).tolist()
-        start_y_list = np.arange(0, self.metadata['height'] - height, height).tolist()
+        start_x_list = np.arange(0, self.metadata['width'] - width, width - overlap).tolist()
+        start_y_list = np.arange(0, self.metadata['height'] - height, height - overlap).tolist()
         start_xy_list = []
 
         for i in range(len(start_x_list)):
