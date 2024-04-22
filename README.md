@@ -2,7 +2,10 @@
 
 This command-line program to process NDPI images and generate cropped image tiles at all available focal points is developed based on [NDPI tile cropping Jupyter Notebook](https://github.com/fengzard/open_world_pollen_detection/blob/main/03_NDPI_Slide_Annotation/03_00_ndpi_cropping.ipynb) authored by [@fengzard](https://github.com/fengzard).
 
-## Docker Installation Instructions
+## Docker Installation Instructions (Recommended)
+
+### Prerequisites
+Docker must be installed on the host machine. Please refer to the [official Docker documentation](https://docs.docker.com/get-docker/) for installation instructions.
 
 ### Build Docker Images
 
@@ -27,7 +30,8 @@ docker run -it --rm ndpi-tile-cropper --help
 
 ### Run Command Line Interface (Parallel)
 
-The following command will process NDPI files the input folder `/data/NDPI` in parallel mode. By default, it uses 8 processes. The number of processes can be changed by modifying the `--num_processes` or `-n` argument.
+The following command will process NDPI files the input folder `/data/NDPI` in parallel mode. By default, it uses 8 processes. 
+The number of processes can be changed by modifying the `--num_processes` or `-n` argument.
 
 Example command:
 
@@ -39,27 +43,6 @@ Help command:
 
 ```shell
 docker run -it --rm ndpi-tile-cropper-parallel --help
-```
-
-
-## Local Installation Instructions (Not Fully Tested)
-
-Recommended Python version: 3.9
-
-### Setup Virtual Environment
-
-```shell
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### Run Command Line Interface
-
-```shell
-cd src
-python ndpi_tile_cropper_cli.py --help
 ```
 
 ## Usage
@@ -109,4 +92,28 @@ optional arguments:
                         Number of processes to use for parallel processing.
   --overwrite, -w       Overwrite existing tiles.
   --verbose, -v         Display more details.
+```
+
+## Local Installation Instructions (Not Fully Tested - Please Use Docker Instead)
+
+### Prerequisites
+- Python must be installed on the host machine. Please refer to the [official Python documentation](https://www.python.org/downloads/) for installation instructions.
+- Java must be installed on the host machine. Please refer to the [official Java documentation](https://www.java.com/en/download/) for installation instructions.
+
+Recommended Python version: 3.9
+
+### Setup Virtual Environment
+
+```shell
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### Run Command Line Interface
+
+```shell
+cd src
+python ndpi_tile_cropper_cli.py --help
 ```
