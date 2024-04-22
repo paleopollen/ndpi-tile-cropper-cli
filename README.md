@@ -2,10 +2,17 @@
 
 This command-line program to process NDPI images and generate cropped image tiles at all available focal points is developed based on [NDPI tile cropping Jupyter Notebook](https://github.com/fengzard/open_world_pollen_detection/blob/main/03_NDPI_Slide_Annotation/03_00_ndpi_cropping.ipynb) authored by [@fengzard](https://github.com/fengzard).
 
-## Docker Installation Instructions (Recommended)
+## Docker Installation and Run Instructions (Recommended)
 
 ### Prerequisites
 Docker must be installed on the host machine. Please refer to the [official Docker documentation](https://docs.docker.com/get-docker/) for installation instructions.
+
+### Clone Repository
+
+```shell
+git clone https://github.com/paleopollen/ndpi-tile-cropper-cli.git
+cd ndpi-tile-cropper-cli
+```
 
 ### Build Docker Images
 
@@ -15,6 +22,10 @@ docker build -t ndpi-tile-cropper-parallel -f parallel.Dockerfile .
 ```
 
 ### Run Command Line Interface (Serial)
+
+The following command will process a single NDPI file. This assumes that the NDPI file is located in an input folder `data/NDPI` within the source code directory. 
+The output tiles will be saved in an output folder `data/NDPI/NDPI_1_tiles`. The input and output folders can be changed by modifying the `-i` and `-o` arguments and mounting the appropriate volumes, 
+i.e. `-v $(pwd)/data:/data` needs to be replaced with `-v /path/to/input/data/folder:/data`.
 
 Example command:
 
@@ -30,7 +41,7 @@ docker run -it --rm ndpi-tile-cropper --help
 
 ### Run Command Line Interface (Parallel)
 
-The following command will process NDPI files the input folder `/data/NDPI` in parallel mode. By default, it uses 8 processes. 
+The following command will process NDPI files the input folder `data/NDPI` in parallel mode. By default, it uses 8 processes. 
 The number of processes can be changed by modifying the `--num_processes` or `-n` argument.
 
 Example command:
@@ -101,6 +112,13 @@ optional arguments:
 - Java must be installed on the host machine. Please refer to the [official Java documentation](https://www.java.com/en/download/) for installation instructions.
 
 Recommended Python version: 3.9
+
+### Clone Repository
+
+```shell
+git clone https://github.com/paleopollen/ndpi-tile-cropper-cli.git
+cd ndpi-tile-cropper-cli
+```
 
 ### Setup Virtual Environment
 
