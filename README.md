@@ -1,5 +1,7 @@
 # NDPI Tile Cropper Command Line Interface
 
+[![Docker](https://github.com/paleopollen/ndpi-tile-cropper-cli/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/paleopollen/ndpi-tile-cropper-cli/actions/workflows/docker-publish.yml)
+
 This command-line program to process NDPI images and generate cropped image tiles at all available focal points is developed based on [NDPI tile cropping Jupyter Notebook](https://github.com/fengzard/open_world_pollen_detection/blob/main/03_NDPI_Slide_Annotation/03_00_ndpi_cropping.ipynb) authored by [@fengzard](https://github.com/fengzard).
 
 ## Docker Installation and Run Instructions (Recommended)
