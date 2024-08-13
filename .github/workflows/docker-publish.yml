@@ -25,7 +25,8 @@ env:
 
 
 jobs:
-  build:
+
+  build-and-push-image:
 
     runs-on: ubuntu-latest
     strategy:
@@ -33,9 +34,9 @@ jobs:
       matrix:
         include:
           - dockerfile: Dockerfile
-            image: ${{ env.REGISTRY }}/${{ env.ACCOUNT_NAME }}/${{ env.IMAGE_NAME }}
+            image: ghcr.io/paleopollen/ndpi-tile-cropper
           - dockerfile: parallel.Dockerfile
-            image: ${{ env.REGISTRY }}/${{ env.ACCOUNT_NAME }}/${{ env.IMAGE_NAME_PARALLEL }}
+            image: ghcr.io/paleopollen/ndpi-tile-cropper-parallel
     permissions:
       contents: read
       packages: write
