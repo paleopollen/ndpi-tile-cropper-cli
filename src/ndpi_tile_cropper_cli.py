@@ -1,12 +1,14 @@
 import argparse
+import glob
+import json
 import logging
+import os
+import signal
+
 import bioformats
 import bioformats.formatreader as format_reader
 import javabridge
-import os
-import glob
 import numpy as np
-
 from PIL import Image
 from bioformats import logback
 
@@ -91,6 +93,13 @@ class NDPIFileCropper:
         self.overwrite_flag = overwrite
         self.metadata = dict()
 
+        self.total_tile_count = 0
+        self.processed_tile_count = 0
+
+        # Handle SIGINT and SIGTERM
+        signal.signal(signal.SIGINT, self.exit_program)
+        signal.signal(signal.SIGTERM, self.exit_program)
+
     def read_metadata(self):
         """Read an NDPISlide."""
         logger.info(self.input_filename + ": Read NDPISlide metadata")
@@ -131,7 +140,7 @@ class NDPIFileCropper:
         logger.info(self.input_filename + ": Crop tiles from NDPISlide")
         img_name = os.path.basename(self.input_file_path).split(' ')[0].split('.')[0]
         # core_name = self.input_file.split('/')[-2].split('_')[0]
-        crops_dir = os.path.join(self.output_dir, img_name)
+        crops_dir = str(os.path.join(self.output_dir, img_name))
         if not os.path.exists(crops_dir):
             os.makedirs(crops_dir)
 
@@ -152,6 +161,22 @@ class NDPIFileCropper:
                 start_xy_list.append(xy)
 
         logger.info(self.input_filename + ": Number of tiles: " + str(len(start_xy_list)))
+        self.total_tile_count = len(start_xy_list)
+
+        crops_dir_metadata_dict = dict()
+        crops_dir_metadata_dict['tile_size'] = self.tile_size
+        crops_dir_metadata_dict['tile_overlap'] = self.tile_overlap
+        crops_dir_metadata_dict['ome_metadata'] = self.metadata
+        crops_dir_metadata_dict['total_tile_count'] = self.total_tile_count
+        crops_dir_metadata_dict['processed_tile_count'] = 0
+        crops_dir_metadata_dict['percent_complete'] = 0.0
+
+        crops_dir_metadata_file_path = os.path.join(crops_dir, 'metadata.json')
+
+        # Write metadata to the crops directory if it does not exist
+        if not os.path.exists(crops_dir_metadata_file_path):
+            with open(crops_dir_metadata_file_path, 'w') as f:
+                json.dump(crops_dir_metadata_dict, f, indent=4)
 
         for i in range(len(start_xy_list)):
             start_x = start_xy_list[i][0]
@@ -170,7 +195,22 @@ class NDPIFileCropper:
                     im.save(os.path.join(tile_dir, str(j) + 'z.png'))
             else:
                 logger.info(self.input_filename + ": Tile " + str(i) + " already exists. Skipping...")
+            self.processed_tile_count += 1
             logger.info(self.input_filename + ": Tile " + str(i) + " complete.")
+
+    def write_metadata_before_exiting(self):
+        crops_dir = str(os.path.join(self.output_dir, os.path.basename(self.input_file_path).split(' ')[0].split('.')[0]))
+        crops_dir_metadata_file_path = os.path.join(crops_dir, 'metadata.json')
+        if os.path.exists(crops_dir_metadata_file_path):
+            with open(crops_dir_metadata_file_path, 'r') as f:
+                existing_metadata = json.load(f)
+                existing_metadata['processed_tile_count'] = self.processed_tile_count
+                existing_metadata['percent_complete'] = round((self.processed_tile_count / self.total_tile_count) * 100, 2)
+            with open(crops_dir_metadata_file_path, 'w') as f:
+                logger.info(self.input_filename + ": Writing metadata to " + crops_dir_metadata_file_path)
+                json.dump(existing_metadata, f, indent=4)
+        else:
+            logger.error(self.input_filename + ": Metadata file not found. Exiting without updating metadata.")
 
     def _get_tile_size(self):
         """Get the tile size."""
@@ -183,6 +223,14 @@ class NDPIFileCropper:
     def _get_tile_format(self):
         """Get the tile format."""
         return self.tile_format
+
+    def exit_program(self, signum, frame):
+        """Exit the program."""
+        logger.info("Received signal: " + str(signum))
+        self.write_metadata_before_exiting()
+        logger.info("Exiting NDPITileCropper CLI...")
+        javabridge.kill_vm()
+        exit(0)
 
 
 if __name__ == '__main__':
@@ -203,6 +251,7 @@ if __name__ == '__main__':
                                             cli.args.tile_overlap, cli.args.tile_format, cli.args.overwrite)
         ndpi_file_cropper.read_metadata()
         ndpi_file_cropper.crop_tiles()
+        ndpi_file_cropper.write_metadata_before_exiting()
 
         javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI")

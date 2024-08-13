@@ -1,9 +1,8 @@
 import argparse
-import logging
-import subprocess
 import concurrent.futures
+import logging
 import os
-import signal
+import subprocess
 
 
 class NDPITileCropperParallelCLI(object):
@@ -14,10 +13,6 @@ class NDPITileCropperParallelCLI(object):
         """Initialize an NDPITileCropperParallelCLI instance."""
         self.parser = self._create_parser()
         self.args = None
-
-        # Handle SIGINT and SIGTERM
-        signal.signal(signal.SIGINT, self.exit_program)
-        signal.signal(signal.SIGTERM, self.exit_program)
 
     def parse_args(self):
         """Parse the command line arguments."""
@@ -112,11 +107,6 @@ class NDPITileCropperParallelCLI(object):
             for input_file in input_files:
                 executor.submit(self.__process_file, input_file)
         logger.info("Finished processing files in parallel")
-
-    @staticmethod
-    def exit_program(signum, frame):
-        logger.info("Received signal: " + str(signum))
-        logger.info("Exiting NDPI Tile Cropper Parallel CLI")
 
 
 if __name__ == '__main__':
