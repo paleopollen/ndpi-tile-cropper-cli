@@ -3,12 +3,15 @@ import glob
 import json
 import logging
 import os
+import shutil
 import signal
 
 import bioformats
 import bioformats.formatreader as format_reader
 import javabridge
 import numpy as np
+
+from zipfile import ZipFile
 from PIL import Image
 from bioformats import logback
 
@@ -69,6 +72,10 @@ class NDPITileCropperCLI(object):
             choices=['png'],
             help='Format of the tiles. [not implemented yet]')
         parser.add_argument(
+            '--zip', '-z',
+            action='store_true',
+            help='Zip the tiles output directory and remove the tiles directory.')
+        parser.add_argument(
             '--verbose', '-v',
             action='store_true',
             help='Display more details.')
@@ -79,7 +86,8 @@ class NDPITileCropperCLI(object):
 class NDPIFileCropper:
     """Crop tiles from an NDPISlide."""
 
-    def __init__(self, input_file, output_dir=None, tile_size=1024, tile_overlap=0, tile_format='png', overwrite=False):
+    def __init__(self, input_file, output_dir=None, tile_size=1024, tile_overlap=0, tile_format='png', overwrite=False,
+                 zip=False):
         """Initialize an NDPIFileCropper instance."""
         self.input_file_path = input_file
         self.input_filename = os.path.basename(self.input_file_path)
@@ -91,6 +99,7 @@ class NDPIFileCropper:
         self.tile_overlap = tile_overlap
         self.tile_format = tile_format
         self.overwrite_flag = overwrite
+        self.zip_flag = zip
         self.metadata = dict()
 
         self.total_tile_count = 0
@@ -212,6 +221,16 @@ class NDPIFileCropper:
         else:
             logger.error(self.input_filename + ": Metadata file not found. Exiting without updating metadata.")
 
+    def zip_tiles(self):
+        """Zip the tiles output directory and remove the directory."""
+        with ZipFile(self.output_dir + '.zip', 'w') as zip_file:
+            for root, dirs, files in os.walk(self.output_dir):
+                for file in files:
+                    zip_file.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), self.output_dir))
+            logger.info(self.input_filename + ": Zipped tiles to " + self.output_dir + '.zip')
+            logger.info(self.input_filename + ": Removing directory " + self.output_dir)
+            shutil.rmtree(self.output_dir)
+
     def _get_tile_size(self):
         """Get the tile size."""
         return self.tile_size
@@ -252,7 +271,8 @@ if __name__ == '__main__':
         ndpi_file_cropper.read_metadata()
         ndpi_file_cropper.crop_tiles()
         ndpi_file_cropper.write_metadata_before_exiting()
-
+        if cli.args.zip:
+            ndpi_file_cropper.zip_tiles()
         javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI")
     except Exception as e:
