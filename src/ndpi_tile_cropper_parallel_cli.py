@@ -64,6 +64,10 @@ class NDPITileCropperParallelCLI(object):
             action='store_true',
             help='Overwrite existing tiles.')
         parser.add_argument(
+            '--zip', '-z',
+            action='store_true',
+            help='Zip the tiles output directory and remove the tiles directory.')
+        parser.add_argument(
             '--verbose', '-v',
             action='store_true',
             help='Display more details.')
@@ -92,6 +96,8 @@ class NDPITileCropperParallelCLI(object):
 
         if self.args.overwrite:
             command.append("-w")
+        if self.args.zip:
+            command.append("-z")
         if self.args.verbose:
             command.append("-v")
 
