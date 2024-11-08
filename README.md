@@ -49,7 +49,7 @@ The number of processes can be changed by modifying the `--num_processes` or `-n
 Example command:
 
 ```shell
-docker run -it --rm -v $(pwd)/data:/data --name ~~ ndpi-tile-cropper-parallel -i /data/NDPI -o /data/NDPI/output
+docker run -it --rm -v $(pwd)/data:/data --name ndpi-tile-cropper-parallel-container ndpi-tile-cropper-parallel -i /data/NDPI -o /data/NDPI/output
 ```
 
 Help command:
@@ -88,7 +88,8 @@ optional arguments:
 ### ndpi_tile_cropper_cli_parallel
 
 ```shell
-usage: ndpi_tile_cropper_parallel_cli.py [-h] --input-dir [INPUT_DIR] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE] [--tile_overlap TILE_OVERLAP] [--num_processes NUM_PROCESSES] [--overwrite] [--verbose]
+usage: ndpi_tile_cropper_parallel_cli.py [-h] --input-dir [INPUT_DIR] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE] [--tile_overlap TILE_OVERLAP] [--num_processes NUM_PROCESSES] [--overwrite] [--zip]
+                                         [--verbose]
 
 Crop tiles from an NDPISlide using parallel processing.
 
@@ -97,7 +98,8 @@ optional arguments:
   --input-dir [INPUT_DIR], -d [INPUT_DIR]
                         Path to the input NDPISlide directory. E.g., data/NDPI
   --output-dir [OUTPUT_DIR], -o [OUTPUT_DIR]
-                        Path to the output directory. E.g., data/NDPI/NDPI_1_tiles. If no output directory path is provided, the program will create a directory using the input file's name and save the tiles in that directory.
+                        Path to the output directory. E.g., data/NDPI/NDPI_1_tiles. If no output directory path is provided, the program will create a directory using the input file's name and save the tiles in
+                        that directory.
   --tile_size TILE_SIZE, -s TILE_SIZE
                         Size of the tiles to crop. Only square tiles are supported at present.
   --tile_overlap TILE_OVERLAP, -l TILE_OVERLAP
@@ -105,10 +107,11 @@ optional arguments:
   --num_processes NUM_PROCESSES, -n NUM_PROCESSES
                         Number of processes to use for parallel processing.
   --overwrite, -w       Overwrite existing tiles.
+  --zip, -z             Zip the tiles output directory and remove the tiles directory.
   --verbose, -v         Display more details.
 ```
 
-## Local Installation Instructions (Not Fully Tested - Please Use Docker Instead)
+## Local Installation Instructions (Not fully tested - please use Docker-based installation instead)
 
 ### Prerequisites
 - Python must be installed on the host machine. Please refer to the [official Python documentation](https://www.python.org/downloads/) for installation instructions.
