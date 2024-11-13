@@ -45,7 +45,6 @@ class ReOrganizer:
     def reorganize(self):
         import os
         import shutil
-        import random
 
         if not os.path.exists(self.dst):
             os.makedirs(self.dst)
