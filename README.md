@@ -81,7 +81,7 @@ optional arguments:
   --tile_overlap TILE_OVERLAP, -l TILE_OVERLAP
                         Overlap of the tiles in pixels.
   --tile_format {png}   Format of the tiles. [not implemented yet]
-  --zip, -z             Zip the tiles output directory and remove the tiles directory.
+  --zip, -z             Zip the tiles output directory and remove the tiles directory. Unzip the tiles directory zip file, if it exists, before starting with the tiles creation.
   --verbose, -v         Display more details.
 ```
 
@@ -107,7 +107,7 @@ optional arguments:
   --num_processes NUM_PROCESSES, -n NUM_PROCESSES
                         Number of processes to use for parallel processing.
   --overwrite, -w       Overwrite existing tiles.
-  --zip, -z             Zip the tiles output directory and remove the tiles directory.
+  --zip, -z             Zip the tiles output directory and remove the tiles directory. Unzip the tiles directory zip file, if it exists, before starting with the tiles creation.
   --verbose, -v         Display more details.
 ```
 

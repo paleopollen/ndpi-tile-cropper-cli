@@ -89,7 +89,7 @@ class NDPITileCropperCLI(object):
         parser.add_argument(
             '--zip', '-z',
             action='store_true',
-            help='Zip the tiles output directory and remove the tiles directory.')
+            help='Zip the tiles output directory and remove the tiles directory. Unzip the tiles directory zip file, if it exists, before starting with the tiles creation.')
         parser.add_argument(
             '--verbose', '-v',
             action='store_true',
@@ -238,13 +238,28 @@ class NDPIFileCropper:
 
     def zip_tiles(self):
         """Zip the tiles output directory and remove the directory."""
-        with ZipFile(self.output_dir + '.zip', 'w') as zip_file:
-            for root, dirs, files in os.walk(self.output_dir):
+        img_name = os.path.basename(self.input_file_path).split(' ')[0].split('.')[0]
+        crops_dir_path = str(os.path.join(self.output_dir, img_name))
+        zip_file_path = crops_dir_path + '.zip'
+        with ZipFile(zip_file_path, 'w') as zip_file:
+            for root, dirs, files in os.walk(crops_dir_path):
                 for file in files:
-                    zip_file.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), self.output_dir))
-            logger.info(self.input_filename + ": Zipped tiles to " + self.output_dir + '.zip')
-            logger.info(self.input_filename + ": Removing directory " + self.output_dir)
-            shutil.rmtree(self.output_dir)
+                    zip_file.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), crops_dir_path))
+            logger.info(self.input_filename + ": Zipped tiles to " + crops_dir_path + '.zip')
+            logger.info(self.input_filename + ": Removing directory " + crops_dir_path)
+            shutil.rmtree(crops_dir_path)
+
+    def unzip_tiles(self):
+        """Unzip the tiles output directory."""
+        img_name = os.path.basename(self.input_file_path).split(' ')[0].split('.')[0]
+        crops_dir_path = str(os.path.join(self.output_dir, img_name))
+        zip_file_path = crops_dir_path + '.zip'
+        if os.path.exists(zip_file_path):
+            with ZipFile(zip_file_path, 'r') as zip_file:
+                zip_file.extractall(crops_dir_path)
+                logger.info(self.input_filename + ": Unzipped tiles to " + crops_dir_path)
+        else:
+            logger.info(self.input_filename + ": Zip file not found. Skipping unzipping...")
 
     def _get_tile_size(self):
         """Get the tile size."""
@@ -262,6 +277,9 @@ class NDPIFileCropper:
         """Exit the program."""
         logger.info("Received signal: " + str(signum))
         self.write_metadata_before_exiting()
+        # TODO: Adding for debugging purposes. Remove later.
+        if cli.args.zip:
+            ndpi_file_cropper.zip_tiles()
         logger.info("Exiting NDPITileCropper CLI...")
         javabridge.kill_vm()
         exit(0)
@@ -284,6 +302,9 @@ if __name__ == '__main__':
         ndpi_file_cropper = NDPIFileCropper(cli.args.input_file, cli.args.output_dir, cli.args.tile_size,
                                             cli.args.tile_overlap, cli.args.tile_format, cli.args.overwrite)
         ndpi_file_cropper.read_metadata()
+        # Unzip the tiles directory if the zip flag is set and if the zip file exists
+        if cli.args.zip:
+            ndpi_file_cropper.unzip_tiles()
         ndpi_file_cropper.crop_tiles()
         ndpi_file_cropper.write_metadata_before_exiting()
         if cli.args.zip:

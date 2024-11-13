@@ -81,7 +81,7 @@ class NDPITileCropperParallelCLI(object):
         parser.add_argument(
             '--zip', '-z',
             action='store_true',
-            help='Zip the tiles output directory and remove the tiles directory.')
+            help='Zip the tiles output directory and remove the tiles directory. Unzip the tiles directory zip file, if it exists, before starting with the tiles creation.')
         parser.add_argument(
             '--verbose', '-v',
             action='store_true',
