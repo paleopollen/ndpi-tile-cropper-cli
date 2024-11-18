@@ -49,7 +49,7 @@ The number of processes can be changed by modifying the `--num_processes` or `-n
 Example command:
 
 ```shell
-docker run -it --rm -v $(pwd)/data:/data --name ~~ ndpi-tile-cropper-parallel -i /data/NDPI -o /data/NDPI/output
+docker run -it --rm -v $(pwd)/data:/data --name ndpi-tile-cropper-parallel-container ndpi-tile-cropper-parallel -i /data/NDPI -o /data/NDPI/output
 ```
 
 Help command:
@@ -111,7 +111,7 @@ optional arguments:
   --verbose, -v         Display more details.
 ```
 
-## Local Installation Instructions (Not Fully Tested - Please Use Docker Instead)
+## Local Installation Instructions (Not fully tested - please use Docker-based installation instead)
 
 ### Prerequisites
 - Python must be installed on the host machine. Please refer to the [official Python documentation](https://www.python.org/downloads/) for installation instructions.
