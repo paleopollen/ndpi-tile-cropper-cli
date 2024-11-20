@@ -229,7 +229,12 @@ class NDPIFileCropper:
             with open(crops_dir_metadata_file_path, 'r') as f:
                 existing_metadata = json.load(f)
                 existing_metadata['processed_tile_count'] = self.processed_tile_count
-                existing_metadata['percent_complete'] = round((self.processed_tile_count / self.total_tile_count) * 100, 2)
+                # Check if total_tile_count is 0 to avoid division by zero
+                if self.total_tile_count == 0:
+                    existing_metadata['percent_complete'] = 0.0
+                else:
+                    # Calculate the percentage of tiles processed
+                    existing_metadata['percent_complete'] = round((self.processed_tile_count / self.total_tile_count) * 100, 2)
             with open(crops_dir_metadata_file_path, 'w') as f:
                 logger.info(self.input_filename + ": Writing metadata to " + crops_dir_metadata_file_path)
                 json.dump(existing_metadata, f, indent=4)
@@ -254,6 +259,12 @@ class NDPIFileCropper:
         img_name = os.path.basename(self.input_file_path).split(' ')[0].split('.')[0]
         crops_dir_path = str(os.path.join(self.output_dir, img_name))
         zip_file_path = crops_dir_path + '.zip'
+
+        # If the crops directory already exists, give priority to that and skip unzipping
+        if os.path.exists(crops_dir_path):
+            logger.info(self.input_filename + ": Directory " + crops_dir_path + " already exists. Skipping unzipping...")
+            return
+
         if os.path.exists(zip_file_path):
             with ZipFile(zip_file_path, 'r') as zip_file:
                 zip_file.extractall(crops_dir_path)
@@ -277,7 +288,6 @@ class NDPIFileCropper:
         """Exit the program."""
         logger.info("Received signal: " + str(signum))
         self.write_metadata_before_exiting()
-        # TODO: Adding for debugging purposes. Remove later.
         if cli.args.zip:
             ndpi_file_cropper.zip_tiles()
         logger.info("Exiting NDPITileCropper CLI...")
@@ -292,28 +302,48 @@ if __name__ == '__main__':
 
     javabridge.start_vm(class_path=bioformats.JARS)
 
+    # Parse the command line arguments
+    cli = NDPITileCropperCLI()
+    cli.parse_args()
+    cli.print_args()
+
+    # Create an NDPIFileCropper instance
+    ndpi_file_cropper = NDPIFileCropper(cli.args.input_file, cli.args.output_dir, cli.args.tile_size,
+                                        cli.args.tile_overlap, cli.args.tile_format, cli.args.overwrite)
+
     try:
         logback.basic_config()
 
-        cli = NDPITileCropperCLI()
-        cli.parse_args()
-        cli.print_args()
-
-        ndpi_file_cropper = NDPIFileCropper(cli.args.input_file, cli.args.output_dir, cli.args.tile_size,
-                                            cli.args.tile_overlap, cli.args.tile_format, cli.args.overwrite)
+        # Read the metadata of the NDPISlide
         ndpi_file_cropper.read_metadata()
+
         # Unzip the tiles directory if the zip flag is set and if the zip file exists
         if cli.args.zip:
             ndpi_file_cropper.unzip_tiles()
+
+        # Crop tiles from the NDPISlide
         ndpi_file_cropper.crop_tiles()
+
+        # Write metadata before exiting
         ndpi_file_cropper.write_metadata_before_exiting()
+
+        # Zip the tiles directory if the zip flag is set
         if cli.args.zip:
             ndpi_file_cropper.zip_tiles()
+
+        # Stop the JVM
         javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI")
     except Exception as e:
-        logger.info("Stopping NDPITileCropper CLI")
+        logger.info("Exception in NDPITileCropper CLI")
         logger.error(e, exc_info=True)
+
+        # Write metadata before exiting
+        ndpi_file_cropper.write_metadata_before_exiting()
+
+        # Zip the tiles directory if the zip flag is set
+        if cli.args.zip:
+            ndpi_file_cropper.zip_tiles()
     finally:
         javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI")
