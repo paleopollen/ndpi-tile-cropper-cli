@@ -294,8 +294,6 @@ class NDPIFileCropper:
         """Exit the program."""
         logger.info("Received signal: " + str(signum))
         self.write_metadata_before_exiting()
-        if cli.args.zip:
-            ndpi_file_cropper.zip_tiles()
         logger.info("Exiting NDPITileCropper CLI...")
         javabridge.kill_vm()
         exit(0)
