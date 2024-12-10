@@ -346,10 +346,6 @@ if __name__ == '__main__':
 
         # Write metadata before exiting
         ndpi_file_cropper.write_metadata_before_exiting()
-
-        # Zip the tiles directory if the zip flag is set
-        if cli.args.zip:
-            ndpi_file_cropper.zip_tiles()
     finally:
         javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI")
