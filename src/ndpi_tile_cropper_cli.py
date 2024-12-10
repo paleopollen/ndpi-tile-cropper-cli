@@ -294,8 +294,9 @@ class NDPIFileCropper:
         """Exit the program."""
         logger.info("Received signal: " + str(signum))
         self.write_metadata_before_exiting()
-        logger.info("Exiting NDPITileCropper CLI...")
+        logger.info("Shutting down JVM.")
         javabridge.kill_vm()
+        logger.info("Stopping NDPITileCropper CLI...")
         exit(0)
 
 
@@ -335,15 +336,14 @@ if __name__ == '__main__':
         if cli.args.zip:
             ndpi_file_cropper.zip_tiles()
 
-        # Stop the JVM
-        javabridge.kill_vm()
-        logger.info("Stopping NDPITileCropper CLI")
     except Exception as e:
         logger.info("Exception in NDPITileCropper CLI")
         logger.error(e, exc_info=True)
-
+    finally:
         # Write metadata before exiting
         ndpi_file_cropper.write_metadata_before_exiting()
-    finally:
+
+        # Stop the JVM
+        logger.info("Shutting down JVM.")
         javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI")
