@@ -267,8 +267,14 @@ class NDPIFileCropper:
 
         if os.path.exists(zip_file_path):
             with ZipFile(zip_file_path, 'r') as zip_file:
-                zip_file.extractall(crops_dir_path)
-                logger.info(self.input_filename + ": Unzipped tiles to " + crops_dir_path)
+                for info in zip_file.infolist():
+                    # Check if the zip file contents starts with the image name
+                    if info.filename.startswith(img_name + '/'):
+                        zip_file.extractall(self.output_dir)
+                        logger.info(self.input_filename + ": Unzipped tiles to " + crops_dir_path)
+                    else:
+                        zip_file.extractall(crops_dir_path)
+                        logger.info(self.input_filename + ": Unzipped tiles to " + crops_dir_path)
         else:
             logger.info(self.input_filename + ": Zip file not found. Skipping unzipping...")
 
