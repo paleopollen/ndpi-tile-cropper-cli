@@ -83,6 +83,11 @@ class NDPITileCropperParallelCLI(object):
             action='store_true',
             help='Zip the tiles output directory and remove the tiles directory. Unzip the tiles directory zip file, if it exists, before starting with the tiles creation.')
         parser.add_argument(
+            '--log-level', '-ll',
+            default='INFO',
+            choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+            help='Set the logging level.')
+        parser.add_argument(
             '--verbose', '-v',
             action='store_true',
             help='Display more details.')
@@ -131,9 +136,14 @@ class NDPITileCropperParallelCLI(object):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s', level=logging.INFO)
-    logger = logging.getLogger("ndpi_tile_cropper_parallel_cli.py")
+    # Create an instance of the CLI and parse the arguments
     cli = NDPITileCropperParallelCLI()
     cli.parse_args()
     cli.print_args()
+
+    # Set up logging
+    logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s', level=cli.args.log_level)
+    logger = logging.getLogger("ndpi_tile_cropper_parallel_cli.py")
+
+    # Process the files in parallel
     cli.process_files_in_parallel()

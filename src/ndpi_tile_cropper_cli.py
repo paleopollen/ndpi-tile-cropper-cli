@@ -91,6 +91,11 @@ class NDPITileCropperCLI(object):
             action='store_true',
             help='Zip the tiles output directory and remove the tiles directory. Unzip the tiles directory zip file, if it exists, before starting with the tiles creation.')
         parser.add_argument(
+            '--log-level', '-ll',
+            default='INFO',
+            choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+            help='Set the logging level.')
+        parser.add_argument(
             '--verbose', '-v',
             action='store_true',
             help='Display more details.')
@@ -301,16 +306,19 @@ class NDPIFileCropper:
 
 
 if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s', level=logging.INFO)
-    logger = logging.getLogger("ndpi_tile_cropper_cli.py")
-    logger.info("Starting NDPITileCropper CLI")
 
+    # Start the JVM
     javabridge.start_vm(class_path=bioformats.JARS)
 
     # Parse the command line arguments
     cli = NDPITileCropperCLI()
     cli.parse_args()
     cli.print_args()
+
+    # Set the logging level
+    logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s', level=cli.args.log_level)
+    logger = logging.getLogger("ndpi_tile_cropper_cli.py")
+    logger.info("Starting NDPITileCropper CLI")
 
     # Create an NDPIFileCropper instance
     ndpi_file_cropper = NDPIFileCropper(cli.args.input_file, cli.args.output_dir, cli.args.tile_size,
