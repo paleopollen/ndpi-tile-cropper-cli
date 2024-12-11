@@ -89,17 +89,16 @@ optional arguments:
 
 ```shell
 usage: ndpi_tile_cropper_parallel_cli.py [-h] --input-dir [INPUT_DIR] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE] [--tile_overlap TILE_OVERLAP] [--num_processes NUM_PROCESSES] [--overwrite] [--zip]
-                                         [--verbose]
+                                         [--log-level [{DEBUG,INFO,WARNING,ERROR,CRITICAL}]] [--verbose]
 
 Crop tiles from an NDPISlide using parallel processing.
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --input-dir [INPUT_DIR], -d [INPUT_DIR]
                         Path to the input NDPISlide directory. E.g., data/NDPI
   --output-dir [OUTPUT_DIR], -o [OUTPUT_DIR]
-                        Path to the output directory. E.g., data/NDPI/NDPI_1_tiles. If no output directory path is provided, the program will create a directory using the input file's name and save the tiles in
-                        that directory.
+                        Path to the output directory. E.g., data/NDPI/NDPI_1_tiles. If no output directory path is provided, the program will create a directory using the input file\'s name and save the tiles in that directory.
   --tile_size TILE_SIZE, -s TILE_SIZE
                         Size of the tiles to crop. Only square tiles are supported at present.
   --tile_overlap TILE_OVERLAP, -l TILE_OVERLAP
@@ -108,6 +107,8 @@ optional arguments:
                         Number of processes to use for parallel processing.
   --overwrite, -w       Overwrite existing tiles.
   --zip, -z             Zip the tiles output directory and remove the tiles directory. Unzip the tiles directory zip file, if it exists, before starting with the tiles creation.
+  --log-level [{DEBUG,INFO,WARNING,ERROR,CRITICAL}], -g [{DEBUG,INFO,WARNING,ERROR,CRITICAL}]
+                        Set the logging level.
   --verbose, -v         Display more details.
 ```
 
