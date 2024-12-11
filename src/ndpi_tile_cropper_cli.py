@@ -154,17 +154,19 @@ class NDPIFileCropper:
         logger.debug(self.input_filename + ": Read a tile from NDPISlide: " + str(x) + "x_" + str(y) + "y_" + str(z) + "z")
         img_path = self.input_file_path
 
+        ImageReader = format_reader.make_image_reader_class()
+        reader = ImageReader()
+        img = None
         try:
-            ImageReader = format_reader.make_image_reader_class()
-            reader = ImageReader()
             reader.setId(img_path)
             img = reader.openBytesXYWH(z, x, y, width, height)
             img.shape = (height, width, 3)
-        except Exception as e:
+        except Exception as ex:
             logger.error(self.input_filename + ": Error reading tile: " + str(x) + "x_" + str(y) + "y_" + str(z) + "z")
-            logger.error(e, exc_info=True)
-            img = np.zeros((height, width, 3), dtype=np.uint8)
-        return img
+            logger.error(ex, exc_info=True)
+        finally:
+            reader.close()
+            return img
 
     @staticmethod
     def __count_files(directory, file_extension):
@@ -227,8 +229,9 @@ class NDPIFileCropper:
             if z_plane_image_count < self.metadata['z_plane'] or self.overwrite_flag:
                 for j in range(self.metadata['z_plane']):
                     img = self.__read_tile(x=start_x, y=start_y, z=j, width=width, height=height)
-                    im = Image.fromarray(img)
-                    im.save(os.path.join(tile_dir, str(j) + 'z.png'))
+                    if img is not None:
+                        im = Image.fromarray(img)
+                        im.save(os.path.join(tile_dir, str(j) + 'z.png'))
             else:
                 logger.info(self.input_filename + ": Tile " + str(i) + " already exists. Skipping...")
             self.processed_tile_count += 1
