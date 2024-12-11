@@ -154,11 +154,16 @@ class NDPIFileCropper:
         logger.debug(self.input_filename + ": Read a tile from NDPISlide: " + str(x) + "x_" + str(y) + "y_" + str(z) + "z")
         img_path = self.input_file_path
 
-        ImageReader = format_reader.make_image_reader_class()
-        reader = ImageReader()
-        reader.setId(img_path)
-        img = reader.openBytesXYWH(z, x, y, width, height)
-        img.shape = (height, width, 3)
+        try:
+            ImageReader = format_reader.make_image_reader_class()
+            reader = ImageReader()
+            reader.setId(img_path)
+            img = reader.openBytesXYWH(z, x, y, width, height)
+            img.shape = (height, width, 3)
+        except Exception as e:
+            logger.error(self.input_filename + ": Error reading tile: " + str(x) + "x_" + str(y) + "y_" + str(z) + "z")
+            logger.error(e, exc_info=True)
+            img = np.zeros((height, width, 3), dtype=np.uint8)
         return img
 
     @staticmethod
