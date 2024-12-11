@@ -84,6 +84,8 @@ class NDPITileCropperParallelCLI(object):
             help='Zip the tiles output directory and remove the tiles directory. Unzip the tiles directory zip file, if it exists, before starting with the tiles creation.')
         parser.add_argument(
             '--log-level', '-ll',
+            type=str,
+            nargs='?',
             default='INFO',
             choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
             help='Set the logging level.')
