@@ -112,7 +112,7 @@ class NDPITileCropperParallelCLI(object):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         command = ["python", "ndpi_tile_cropper_cli.py", "-i", input_file, "-o", output_dir, "-s", str(self.args.tile_size),
-                   "-l", str(self.args.tile_overlap)]
+                   "-l", str(self.args.tile_overlap), "-ll", str(self.args.log_level)]
 
         if self.args.overwrite:
             command.append("-w")
