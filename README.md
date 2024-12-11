@@ -64,7 +64,9 @@ docker run -it --rm ndpi-tile-cropper-parallel --help
 ### ndpi_tile_cropper_cli
 
 ```shell
-usage: ndpi_tile_cropper_cli.py [-h] --input-file [INPUT_FILE] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE] [--overwrite] [--tile_overlap TILE_OVERLAP] [--tile_format {png}] [--zip] [--verbose]
+usage: ndpi_tile_cropper_cli.py [-h] --input-file [INPUT_FILE] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE] [--overwrite]
+                                [--tile_overlap TILE_OVERLAP] [--tile_format {png}] [--zip] [--log-level [{DEBUG,INFO,WARNING,ERROR,CRITICAL}]]
+                                [--verbose]
 
 Crop tiles from an NDPISlide.
 
@@ -73,23 +75,27 @@ optional arguments:
   --input-file [INPUT_FILE], -i [INPUT_FILE]
                         Path to the input NDPISlide file. E.g., data/NDPI/NDPI_1.ndpi
   --output-dir [OUTPUT_DIR], -o [OUTPUT_DIR]
-                        Path to the output directory. E.g., data/NDPI/NDPI_1_tiles. If no output directory path is provided, the program will create a directory using the input file's name and save the tiles in
-                        that directory.
+                        Path to the output directory. E.g., data/NDPI/NDPI_1_tiles. If no output directory path is provided, the program will
+                        create a directory using the input file\'s name and save the tiles in that directory.
   --tile_size TILE_SIZE, -s TILE_SIZE
                         Size of the tiles to crop. Only square tiles are supported at present.
   --overwrite, -w       Overwrite existing tiles.
   --tile_overlap TILE_OVERLAP, -l TILE_OVERLAP
                         Overlap of the tiles in pixels.
   --tile_format {png}   Format of the tiles. [not implemented yet]
-  --zip, -z             Zip the tiles output directory and remove the tiles directory. Unzip the tiles directory zip file, if it exists, before starting with the tiles creation.
+  --zip, -z             Zip the tiles output directory and remove the tiles directory. Unzip the tiles directory zip file, if it exists, before
+                        starting with the tiles creation.
+  --log-level [{DEBUG,INFO,WARNING,ERROR,CRITICAL}], -g [{DEBUG,INFO,WARNING,ERROR,CRITICAL}]
+                        Set the logging level.
   --verbose, -v         Display more details.
 ```
 
 ### ndpi_tile_cropper_cli_parallel
 
 ```shell
-usage: ndpi_tile_cropper_parallel_cli.py [-h] --input-dir [INPUT_DIR] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE] [--tile_overlap TILE_OVERLAP] [--num_processes NUM_PROCESSES] [--overwrite] [--zip]
-                                         [--verbose]
+usage: ndpi_tile_cropper_parallel_cli.py [-h] --input-dir [INPUT_DIR] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE]
+                                         [--tile_overlap TILE_OVERLAP] [--num_processes NUM_PROCESSES] [--overwrite] [--zip]
+                                         [--log-level [{DEBUG,INFO,WARNING,ERROR,CRITICAL}]] [--verbose]
 
 Crop tiles from an NDPISlide using parallel processing.
 
@@ -98,8 +104,8 @@ optional arguments:
   --input-dir [INPUT_DIR], -d [INPUT_DIR]
                         Path to the input NDPISlide directory. E.g., data/NDPI
   --output-dir [OUTPUT_DIR], -o [OUTPUT_DIR]
-                        Path to the output directory. E.g., data/NDPI/NDPI_1_tiles. If no output directory path is provided, the program will create a directory using the input file's name and save the tiles in
-                        that directory.
+                        Path to the output directory. E.g., data/NDPI/NDPI_1_tiles. If no output directory path is provided, the program will
+                        create a directory using the input file\'s name and save the tiles in that directory.
   --tile_size TILE_SIZE, -s TILE_SIZE
                         Size of the tiles to crop. Only square tiles are supported at present.
   --tile_overlap TILE_OVERLAP, -l TILE_OVERLAP
@@ -107,7 +113,10 @@ optional arguments:
   --num_processes NUM_PROCESSES, -n NUM_PROCESSES
                         Number of processes to use for parallel processing.
   --overwrite, -w       Overwrite existing tiles.
-  --zip, -z             Zip the tiles output directory and remove the tiles directory. Unzip the tiles directory zip file, if it exists, before starting with the tiles creation.
+  --zip, -z             Zip the tiles output directory and remove the tiles directory. Unzip the tiles directory zip file, if it exists, before
+                        starting with the tiles creation.
+  --log-level [{DEBUG,INFO,WARNING,ERROR,CRITICAL}], -g [{DEBUG,INFO,WARNING,ERROR,CRITICAL}]
+                        Set the logging level.
   --verbose, -v         Display more details.
 ```
 
