@@ -83,7 +83,7 @@ class NDPITileCropperParallelCLI(object):
             action='store_true',
             help='Zip the tiles output directory and remove the tiles directory. Unzip the tiles directory zip file, if it exists, before starting with the tiles creation.')
         parser.add_argument(
-            '--log-level', '-ll',
+            '--log-level', '-g',
             type=str,
             nargs='?',
             default='INFO',
@@ -114,7 +114,7 @@ class NDPITileCropperParallelCLI(object):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         command = ["python", "ndpi_tile_cropper_cli.py", "-i", input_file, "-o", output_dir, "-s", str(self.args.tile_size),
-                   "-l", str(self.args.tile_overlap), "-ll", str(self.args.log_level)]
+                   "-l", str(self.args.tile_overlap), "-g", str(self.args.log_level)]
 
         if self.args.overwrite:
             command.append("-w")

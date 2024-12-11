@@ -91,7 +91,7 @@ class NDPITileCropperCLI(object):
             action='store_true',
             help='Zip the tiles output directory and remove the tiles directory. Unzip the tiles directory zip file, if it exists, before starting with the tiles creation.')
         parser.add_argument(
-            '--log-level', '-ll',
+            '--log-level', '-g',
             type=str,
             nargs='?',
             default='INFO',
