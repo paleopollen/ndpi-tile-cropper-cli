@@ -318,7 +318,7 @@ class NDPIFileCropper:
 if __name__ == '__main__':
 
     # Start the JVM
-    javabridge.start_vm(class_path=bioformats.JARS)
+    javabridge.start_vm(class_path=bioformats.JARS, run_headless=True)
 
     # Parse the command line arguments
     cli = NDPITileCropperCLI()
