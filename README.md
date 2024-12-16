@@ -10,6 +10,8 @@ Jennifer T. Feng, Shu Kong, Timme H. Donders, Surangi W. Punyasena.
 
 ## Docker-based Installation and Run Instructions (Recommended)
 
+Note: This is not tested on Apple Silicon M series chips.
+
 ### Prerequisites
 
 Docker must be installed on the host machine. Please refer to
