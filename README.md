@@ -2,9 +2,10 @@
 
 [![Docker](https://github.com/paleopollen/ndpi-tile-cropper-cli/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/paleopollen/ndpi-tile-cropper-cli/actions/workflows/docker-publish.yml)
 
-We present a Command Line Interface (CLI) to read Hamamatsu NanoZoomer Digital Pathology Image (NDPI) format files and
-generate cropped image tiles at all available focal points. This CLI is developed based on Deep Learning and Pollen
-Detection in the Open World [notebooks](https://github.com/fengzard/open_world_pollen_detection) authored by
+We present `NDPI Tile Cropper`, a Command Line Interface (CLI) to read Hamamatsu NanoZoomer Digital Pathology Image
+(NDPI) format files and generate cropped image tiles at all available focal points. This CLI is developed based on
+Deep Learning and Pollen Detection in the Open
+World [notebooks](https://github.com/fengzard/open_world_pollen_detection) authored by
 Jennifer T. Feng, Shu Kong, Timme H. Donders, Surangi W. Punyasena.
 
 ## Docker Installation and Run Instructions (Recommended)
