@@ -28,7 +28,7 @@ docker build -t ndpi-tile-cropper .
 docker build -t ndpi-tile-cropper-parallel -f parallel.Dockerfile .
 ```
 
-### Run Command Line Interface (Serial)
+### Run CLI in Serial Mode
 
 The following command will process a single NDPI file. This assumes that the NDPI file is located in an input folder
 `data/NDPI` within the source code directory.
@@ -48,7 +48,7 @@ Help command:
 docker run -it --rm ndpi-tile-cropper --help
 ```
 
-### Run Command Line Interface (Parallel)
+### Run CLI in Parallel Mode
 
 The following command will process NDPI files the input folder `data/NDPI` in parallel mode. By default, it uses 8
 processes. The number of processes can be changed by modifying the `--num_processes` or `-n` argument.
@@ -153,7 +153,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### Run Command Line Interface
+### Run CLI Help Command
 
 ```shell
 cd src
