@@ -56,7 +56,7 @@ class NDPITileCropperCLI(object):
     def _create_parser():
         """Create a parser for the command line arguments."""
         parser = argparse.ArgumentParser(
-            description='Crop tiles from an NDPISlide.')
+            description='Crop and generate tile images from an NDPI format image file')
         parser.add_argument(
             '--input-file', '-i',
             nargs='?', default=None, required=True,
