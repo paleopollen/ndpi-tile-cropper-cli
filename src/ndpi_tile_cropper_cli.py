@@ -109,7 +109,7 @@ class NDPIFileCropper:
     """Crop tiles from an NDPISlide."""
 
     def __init__(self, input_file, output_dir=None, tile_size=1024, tile_overlap=0, tile_format='png', overwrite=False,
-                 zip=False):
+                 zip_flag=False):
         """Initialize an NDPIFileCropper instance."""
         self.input_file_path = input_file
         self.input_filename = os.path.basename(self.input_file_path)
@@ -121,7 +121,7 @@ class NDPIFileCropper:
         self.tile_overlap = tile_overlap
         self.tile_format = tile_format
         self.overwrite_flag = overwrite
-        self.zip_flag = zip
+        self.zip_flag = zip_flag
         self.metadata = dict()
 
         self.total_tile_count = 0
