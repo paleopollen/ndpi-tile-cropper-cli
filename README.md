@@ -8,7 +8,7 @@ Deep Learning and Pollen Detection in the Open
 World [notebooks](https://github.com/fengzard/open_world_pollen_detection) authored by
 Jennifer T. Feng, Shu Kong, Timme H. Donders, Surangi W. Punyasena.
 
-## Docker Installation and Run Instructions (Recommended)
+## Docker-based Installation and Run Instructions (Recommended)
 
 ### Prerequisites
 
@@ -127,7 +127,7 @@ optional arguments:
   --verbose, -v         Display more details.
 ```
 
-## Local Installation Instructions (Not fully tested - please use Docker-based installation instead)
+## Standard Installation Instructions (Not fully tested - please use Docker-based installation instead)
 
 ### Prerequisites
 
