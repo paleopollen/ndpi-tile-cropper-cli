@@ -1,13 +1,21 @@
-# NDPI Tile Cropper Command Line Interface
+# A Command Line Interface for NDPI Format Image Tile Cropping
 
 [![Docker](https://github.com/paleopollen/ndpi-tile-cropper-cli/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/paleopollen/ndpi-tile-cropper-cli/actions/workflows/docker-publish.yml)
 
-This command-line program to process NDPI images and generate cropped image tiles at all available focal points is developed based on [NDPI tile cropping Jupyter Notebook](https://github.com/fengzard/open_world_pollen_detection/blob/main/03_NDPI_Slide_Annotation/03_00_ndpi_cropping.ipynb) authored by [@fengzard](https://github.com/fengzard).
+We present `NDPI Tile Cropper`, a Command Line Interface (CLI) to read Hamamatsu NanoZoomer Digital Pathology Image
+(NDPI) format files and generate cropped image tiles at all available focal points. This CLI is developed based on
+Deep Learning and Pollen Detection in the Open
+World [notebooks](https://github.com/fengzard/open_world_pollen_detection) authored by
+Jennifer T. Feng, Shu Kong, Timme H. Donders, Surangi W. Punyasena.
 
-## Docker Installation and Run Instructions (Recommended)
+## Docker-based Installation and Run Instructions (Recommended)
+
+Note: This is not tested on Apple Silicon M series chips.
 
 ### Prerequisites
-Docker must be installed on the host machine. Please refer to the [official Docker documentation](https://docs.docker.com/get-docker/) for installation instructions.
+
+Docker must be installed on the host machine. Please refer to
+the [official Docker documentation](https://docs.docker.com/get-docker/) for installation instructions.
 
 ### Clone Repository
 
@@ -23,11 +31,13 @@ docker build -t ndpi-tile-cropper .
 docker build -t ndpi-tile-cropper-parallel -f parallel.Dockerfile .
 ```
 
-### Run Command Line Interface (Serial)
+### Run CLI in Serial Mode
 
-The following command will process a single NDPI file. This assumes that the NDPI file is located in an input folder `data/NDPI` within the source code directory. 
-The output tiles will be saved in an output folder `data/NDPI/NDPI_1_tiles`. The input and output folders can be changed by modifying the `-i` and `-o` arguments and mounting the appropriate volumes, 
-i.e. `-v $(pwd)/data:/data` needs to be replaced with `-v /path/to/input/data/folder:/data`.
+The following command will process a single NDPI file. This assumes that the NDPI file is located in an input folder
+`data/NDPI` within the source code directory.
+The output tiles will be saved in an output folder `data/NDPI/NDPI_1_tiles`. The input and output folders can be changed
+by modifying the `-i` and `-o` arguments and mounting the appropriate volumes,
+i.e. `-v $(pwd)/data:/data` needs to be replaced with `-v </path/to/input/data/folder>:/data`.
 
 Example command:
 
@@ -41,10 +51,10 @@ Help command:
 docker run -it --rm ndpi-tile-cropper --help
 ```
 
-### Run Command Line Interface (Parallel)
+### Run CLI in Parallel Mode
 
-The following command will process NDPI files the input folder `data/NDPI` in parallel mode. By default, it uses 8 processes. 
-The number of processes can be changed by modifying the `--num_processes` or `-n` argument.
+The following command will process NDPI files the input folder `data/NDPI` in parallel mode. By default, it uses 8
+processes. The number of processes can be changed by modifying the `--num_processes` or `-n` argument.
 
 Example command:
 
@@ -60,15 +70,14 @@ docker run -it --rm ndpi-tile-cropper-parallel --help
 
 ## Usage
 
-
 ### ndpi_tile_cropper_cli
 
 ```shell
-usage: ndpi_tile_cropper_cli.py [-h] --input-file [INPUT_FILE] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE] [--overwrite]
+usage: python ndpi_tile_cropper_cli.py [-h] --input-file [INPUT_FILE] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE] [--overwrite]
                                 [--tile_overlap TILE_OVERLAP] [--tile_format {png}] [--zip] [--log-level [{DEBUG,INFO,WARNING,ERROR,CRITICAL}]]
                                 [--verbose]
 
-Crop tiles from an NDPISlide.
+Crop and generate tile images from an NDPI format image file.
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -93,7 +102,7 @@ optional arguments:
 ### ndpi_tile_cropper_cli_parallel
 
 ```shell
-usage: ndpi_tile_cropper_parallel_cli.py [-h] --input-dir [INPUT_DIR] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE]
+usage: python ndpi_tile_cropper_parallel_cli.py [-h] --input-dir [INPUT_DIR] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE]
                                          [--tile_overlap TILE_OVERLAP] [--num_processes NUM_PROCESSES] [--overwrite] [--zip]
                                          [--log-level [{DEBUG,INFO,WARNING,ERROR,CRITICAL}]] [--verbose]
 
@@ -120,11 +129,14 @@ optional arguments:
   --verbose, -v         Display more details.
 ```
 
-## Local Installation Instructions (Not fully tested - please use Docker-based installation instead)
+## Standard Installation Instructions (Not fully tested - please use Docker-based installation instead)
 
 ### Prerequisites
-- Python must be installed on the host machine. Please refer to the [official Python documentation](https://www.python.org/downloads/) for installation instructions.
-- Java must be installed on the host machine. Please refer to the [official Java documentation](https://www.java.com/en/download/) for installation instructions.
+
+- Python must be installed on the host machine. Please refer to
+  the [official Python documentation](https://www.python.org/downloads/) for installation instructions.
+- Java must be installed on the host machine. Please refer to
+  the [official Java documentation](https://www.java.com/en/download/) for installation instructions.
 
 Recommended Python version: 3.9
 
@@ -144,7 +156,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### Run Command Line Interface
+### Run CLI Help Command
 
 ```shell
 cd src
