@@ -1,4 +1,4 @@
-numpy==1.25.2
+# numpy==1.25.2
 Pillow==10.1.0
 python-bioformats==4.0.7
 python-javabridge==4.0.3

@@ -16,9 +16,14 @@ RUN apt-get update && apt-get install -y \
 && mkdir -p /data \
 && rm -rf /var/lib/apt/lists/*
 
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+RUN export JAVA_HOME
+
 COPY requirements.txt ./
 
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip \
+    && pip install numpy==1.25.2 \
+    && pip install -r requirements.txt
 
 COPY src/ndpi_tile_cropper_cli.py ./
 
