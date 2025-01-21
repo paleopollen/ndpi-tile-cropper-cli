@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - README to include Zenodo status badge. [#50](https://github.com/paleopollen/palyim-issues/issues/50)
+- Filename splitting code to handle multiple dots in the filename. [#67](https://github.com/paleopollen/palyim-issues/issues/67)
 
 ## [1.0.0] - 2024-12-16
 
