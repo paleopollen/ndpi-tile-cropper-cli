@@ -176,7 +176,7 @@ class NDPIFileCropper:
     def crop_tiles(self):
         """Crop tiles from an NDPISlide."""
         logger.info(self.input_filename + ": Crop tiles from NDPISlide")
-        img_name = os.path.basename(self.input_file_path).split(' ')[0].split('.')[0]
+        img_name = os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]
         # core_name = self.input_file.split('/')[-2].split('_')[0]
         crops_dir = str(os.path.join(self.output_dir, img_name))
         if not os.path.exists(crops_dir):
