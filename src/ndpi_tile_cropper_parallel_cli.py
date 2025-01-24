@@ -135,8 +135,8 @@ class NDPITileCropperParallelCLI(object):
         with concurrent.futures.ProcessPoolExecutor(max_workers=self.args.num_processes) as executor:
             for input_file in input_files:
                 futures.append(executor.submit(self.__process_file, input_file))
-        logger.info("Waiting for all files to be processed")
-        concurrent.futures.wait(futures)
+            logger.info("Waiting for all files to be processed")
+            concurrent.futures.wait(futures)
         logger.info("Finished processing files in parallel")
 
 
