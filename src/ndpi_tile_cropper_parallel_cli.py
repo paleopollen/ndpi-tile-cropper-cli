@@ -126,6 +126,7 @@ class NDPITileCropperParallelCLI(object):
         result = subprocess.run(command)
         logger.info(result)
         logger.info("Finished processing file: {}".format(input_file))
+        return result
 
     def process_files_in_parallel(self):
         """Process the files in parallel."""
