@@ -131,7 +131,7 @@ class NDPITileCropperParallelCLI(object):
         """Process the files in parallel."""
         logger.info("Started processing files in parallel")
         input_files = self._get_input_files()
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self.args.num_processes) as executor:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=self.args.num_processes) as executor:
             for input_file in input_files:
                 executor.submit(self.__process_file, input_file)
         logger.info("Finished processing files in parallel")
