@@ -124,7 +124,7 @@ class NDPITileCropperParallelCLI(object):
         if self.args.verbose:
             command.append("-v")
 
-        result = subprocess.run(command)
+        result = subprocess.run(command, capture_output=True, shell=True)
         logger.info(result)
         logger.info("Finished processing file: {}".format(input_file))
 
