@@ -238,7 +238,7 @@ class NDPIFileCropper:
             logger.info(self.input_filename + ": Tile " + str(i) + " complete.")
 
     def write_metadata_before_exiting(self):
-        crops_dir = str(os.path.join(self.output_dir, os.path.basename(self.input_file_path).split(' ')[0].split('.')[0]))
+        crops_dir = str(os.path.join(self.output_dir, os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]))
         crops_dir_metadata_file_path = os.path.join(crops_dir, 'metadata.json')
         if os.path.exists(crops_dir_metadata_file_path):
             with open(crops_dir_metadata_file_path, 'r') as f:
@@ -258,7 +258,7 @@ class NDPIFileCropper:
 
     def zip_tiles(self):
         """Zip the tiles output directory and remove the directory."""
-        img_name = os.path.basename(self.input_file_path).split(' ')[0].split('.')[0]
+        img_name = os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]
         crops_dir_path = str(os.path.join(self.output_dir, img_name))
         zip_file_path = crops_dir_path + '.zip'
         with ZipFile(zip_file_path, 'w') as zip_file:
@@ -271,7 +271,7 @@ class NDPIFileCropper:
 
     def unzip_tiles(self):
         """Unzip the tiles output directory."""
-        img_name = os.path.basename(self.input_file_path).split(' ')[0].split('.')[0]
+        img_name = os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]
         crops_dir_path = str(os.path.join(self.output_dir, img_name))
         zip_file_path = crops_dir_path + '.zip'
 

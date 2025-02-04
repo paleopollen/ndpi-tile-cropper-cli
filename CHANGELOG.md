@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Filename splitting code to handle multiple dots in the filename. 
+
 ## [1.1.0] - 2025-01-22
 
 ### Changed
