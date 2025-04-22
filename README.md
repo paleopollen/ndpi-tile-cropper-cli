@@ -1,6 +1,6 @@
 # A Command Line Interface for NDPI Format Image Tile Cropping
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14502307.svg)](https://doi.org/10.5281/zenodo.14502307)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14502306.svg)](https://doi.org/10.5281/zenodo.14502306)
 [![Docker](https://github.com/paleopollen/ndpi-tile-cropper-cli/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/paleopollen/ndpi-tile-cropper-cli/actions/workflows/docker-publish.yml)
 
 We present `NDPI Tile Cropper`, a Command Line Interface (CLI) to read Hamamatsu NanoZoomer Digital Pathology Image
