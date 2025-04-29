@@ -14,10 +14,11 @@
 #  limitations under the License.
 
 import argparse
-import concurrent.futures
 import logging
 import os
 import subprocess
+
+from concurrent.futures import ProcessPoolExecutor, wait
 
 
 class NDPITileCropperParallelCLI(object):
@@ -123,7 +124,7 @@ class NDPITileCropperParallelCLI(object):
         if self.args.verbose:
             command.append("-v")
 
-        result = subprocess.run(command)
+        result = subprocess.run(command, capture_output=True, shell=True)
         logger.info(result)
         logger.info("Finished processing file: {}".format(input_file))
 
@@ -131,10 +132,13 @@ class NDPITileCropperParallelCLI(object):
         """Process the files in parallel."""
         logger.info("Started processing files in parallel")
         input_files = self._get_input_files()
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self.args.num_processes) as executor:
+        futures = []
+        with ProcessPoolExecutor(max_workers=self.args.num_processes) as executor:
             for input_file in input_files:
-                executor.submit(self.__process_file, input_file)
-        logger.info("Finished processing files in parallel")
+                futures.append(executor.submit(self.__process_file, input_file))
+            logger.info("Waiting for all files to be processed")
+            wait(futures)
+            logger.info("Finished processing files in parallel")
 
 
 if __name__ == '__main__':
