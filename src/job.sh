@@ -30,7 +30,7 @@ run_with_retry() {
             sleep $((RANDOM % 10 + 5))  # Random delay between 5-15 seconds
         fi
         
-        if srun --ntasks=1 --cpus-per-task=$SLURM_CPUS_PER_TASK /usr/bin/apptainer run --bind /work/hdd/bdar/data:/data ndpi-tile-cropper-parallel-v1.1.1.sif python ndpi_tile_cropper_parallel_cli_simple.py -d "$1" -o /data/TADP_TILE_CROPS -n 2 -s 2048 -l 256 -r 3; then
+        if srun --ntasks=1 --cpus-per-task=$SLURM_CPUS_PER_TASK /usr/bin/apptainer run --bind /work/hdd/bdar/data:/data ndpi-tile-cropper-parallel-pr-22.sif python ndpi_tile_cropper_parallel_cli_simple.py -d "$1" -o /data/TADP_TILE_CROPS -n 2 -s 2048 -l 256 -r 3; then
             success=true
             echo "Successfully processed $1"
         else
