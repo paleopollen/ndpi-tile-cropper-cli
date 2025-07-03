@@ -18,7 +18,7 @@
 export OMP_NUM_THREADS=1  # 1 if code is not multithreaded, otherwise set to the number of CPUs allocated per task.
 cd /projects/bdar/sandeeps/git/ndpi-tile-cropper-cli/src
 
-# Function to run with retry logic
+# Function to run with retry logic using the simple parallel CLI
 run_with_retry() {
     local max_retries=3
     local retry_count=0
@@ -30,7 +30,7 @@ run_with_retry() {
             sleep $((RANDOM % 10 + 5))  # Random delay between 5-15 seconds
         fi
         
-        if srun --ntasks=1 --cpus-per-task=$SLURM_CPUS_PER_TASK /usr/bin/apptainer run --bind /work/hdd/bdar/data:/data ndpi-tile-cropper-parallel-v1.1.1.sif -d "$1" -o /data/TADP_TILE_CROPS -n 2 -s 2048 -l 256 -r 3; then
+        if srun --ntasks=1 --cpus-per-task=$SLURM_CPUS_PER_TASK /usr/bin/apptainer run --bind /work/hdd/bdar/data:/data ndpi-tile-cropper-parallel-v1.1.1.sif python ndpi_tile_cropper_parallel_cli_simple.py -d "$1" -o /data/TADP_TILE_CROPS -n 2 -s 2048 -l 256 -r 3; then
             success=true
             echo "Successfully processed $1"
         else

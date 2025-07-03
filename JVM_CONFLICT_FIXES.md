@@ -9,16 +9,25 @@ org.libjpegturbo.turbojpeg.TJDecompressor.init()V
 javabridge.jutil.JavaException: org.libjpegturbo.turbojpeg.TJDecompressor.init()V
 ```
 
-This happens because:
+Additionally, you may encounter pickling errors when using ProcessPoolExecutor:
+
+```
+Can't pickle local object 'ArgumentParser.__init__.<locals>.identity'
+```
+
+These issues occur because:
 1. Each subprocess starts its own JVM instance with `javabridge.start_vm()`
 2. Multiple JVMs competing for the same resources cause conflicts
 3. The Java library initialization fails when multiple processes access shared resources simultaneously
+4. ProcessPoolExecutor tries to pickle (serialize) objects that contain unpicklable local functions
 
 ## Solutions Implemented
 
-### 1. Improved Parallel Processing (`ndpi_tile_cropper_parallel_cli.py`)
+### 1. Fixed Parallel Processing (`ndpi_tile_cropper_parallel_cli.py`)
 
 **Changes made:**
+- Fixed pickling issue by moving argument parsing outside worker function
+- Created picklable `process_single_file()` function with simple data types
 - Switched from `ThreadPoolExecutor` to `ProcessPoolExecutor` for better isolation
 - Reduced default number of processes from 8 to 4 to minimize conflicts
 - Added retry logic with exponential backoff for JVM conflicts
@@ -29,7 +38,15 @@ This happens because:
 **New command-line options:**
 - `--retry-attempts, -r`: Number of retry attempts for failed processing (default: 3)
 
-### 2. Enhanced JVM Management (`ndpi_tile_cropper_cli.py`)
+### 2. Simple Parallel Processing (`ndpi_tile_cropper_parallel_cli_simple.py`)
+
+**Alternative approach:**
+- Uses `ThreadPoolExecutor` to avoid pickling issues entirely
+- Maintains all JVM conflict handling features
+- Simpler implementation with no serialization requirements
+- Recommended for environments where pickling is problematic
+
+### 3. Enhanced JVM Management (`ndpi_tile_cropper_cli.py`)
 
 **Changes made:**
 - Better JVM initialization error handling
@@ -37,27 +54,35 @@ This happens because:
 - More specific error messages for JVM conflicts
 - Graceful handling of reader cleanup failures
 
-### 3. Updated Job Script (`job.sh`)
+### 4. Updated Job Script (`job.sh`)
 
 **Changes made:**
 - Reduced `--ntasks-per-node` from 4 to 2
 - Added retry logic function with random delays
 - Staggered process starts with 10-second delays
 - Added the `-r 3` parameter for retry attempts
+- Updated to use the simple parallel CLI to avoid pickling issues
 
 ## Usage
 
-### Running with Reduced Concurrency
+### Option 1: Use the Fixed ProcessPoolExecutor Version
 
 ```bash
-# Use fewer parallel processes
+# Use the fixed version with ProcessPoolExecutor
 python src/ndpi_tile_cropper_parallel_cli.py -d /path/to/ndpi/files -o /path/to/output -n 2 -r 3
 ```
 
-### Using the Updated Job Script
+### Option 2: Use the Simple ThreadPoolExecutor Version (Recommended)
 
 ```bash
-# Submit the updated job script
+# Use the simple version that avoids pickling issues
+python src/ndpi_tile_cropper_parallel_cli_simple.py -d /path/to/ndpi/files -o /path/to/output -n 2 -r 3
+```
+
+### Option 3: Using the Updated Job Script
+
+```bash
+# Submit the updated job script (uses simple version)
 sbatch src/job.sh
 ```
 
@@ -65,6 +90,7 @@ The script now includes:
 - Retry logic for failed processes
 - Staggered starts to reduce JVM conflicts
 - Better error reporting
+- Uses the simple parallel CLI to avoid pickling issues
 
 ### Manual Retry Logic
 
@@ -74,7 +100,7 @@ If you still encounter issues, you can manually implement retry logic:
 #!/bin/bash
 max_retries=3
 for attempt in {1..$max_retries}; do
-    if python src/ndpi_tile_cropper_parallel_cli.py -d /path/to/files -o /path/to/output -n 2; then
+    if python src/ndpi_tile_cropper_parallel_cli_simple.py -d /path/to/files -o /path/to/output -n 2; then
         echo "Success on attempt $attempt"
         break
     else
@@ -93,12 +119,20 @@ Look for these patterns in your logs:
 - `javabridge` exceptions
 - `JVM conflict detected` messages
 
+### Check for Pickling Issues
+
+Look for these patterns in your logs:
+- `Can't pickle local object` errors
+- `pickle` related exceptions
+- Serialization errors
+
 ### Log Analysis
 
 The improved logging will now show:
 - Specific JVM conflict detection
 - Retry attempt information
 - Success/failure counts for parallel processing
+- Clear error messages for both JVM and pickling issues
 
 ### Performance Considerations
 
@@ -106,11 +140,14 @@ The improved logging will now show:
 - Reduced parallelism may increase total processing time
 - Retry logic adds overhead but improves reliability
 - Staggered starts reduce peak resource usage
+- ThreadPoolExecutor (simple version) may have more JVM conflicts but no pickling issues
+- ProcessPoolExecutor (fixed version) has better isolation but requires picklable functions
 
 **Recommended settings:**
 - Start with 2-4 parallel processes
 - Use 3 retry attempts
 - Add 5-15 second delays between process starts
+- Use the simple version if you encounter pickling issues
 
 ## Testing
 
@@ -129,14 +166,16 @@ If the above fixes don't resolve the issue, consider:
 2. **Resource Limits**: Set JVM memory limits to prevent conflicts
 3. **Container Isolation**: Use separate containers for each process
 4. **Different JVM**: Try different JVM versions or configurations
+5. **Different Parallelism**: Use `multiprocessing.Pool` directly
 
 ## Troubleshooting
 
 ### Common Issues
 
 1. **Still getting JVM errors**: Reduce the number of parallel processes further
-2. **Processes hanging**: Check for timeout settings and resource limits
-3. **Memory issues**: Monitor system memory usage during processing
+2. **Pickling errors**: Use the simple version (`ndpi_tile_cropper_parallel_cli_simple.py`)
+3. **Processes hanging**: Check for timeout settings and resource limits
+4. **Memory issues**: Monitor system memory usage during processing
 
 ### Debug Commands
 
@@ -149,6 +188,9 @@ htop
 
 # Check for file locks
 lsof | grep ndpi
+
+# Test pickling (if using ProcessPoolExecutor version)
+python -c "import pickle; from src.ndpi_tile_cropper_parallel_cli import process_single_file; pickle.dumps(process_single_file)"
 ```
 
 ## Version History
@@ -156,4 +198,8 @@ lsof | grep ndpi
 - **v1.1.1**: Initial JVM conflict fixes
 - Added retry logic and better error handling
 - Reduced default parallelism
-- Improved job script with staggered starts 
+- Improved job script with staggered starts
+- **v1.1.2**: Fixed pickling issues
+- Created picklable worker function
+- Added simple ThreadPoolExecutor alternative
+- Updated job script to use simple version 
