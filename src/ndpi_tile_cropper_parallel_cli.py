@@ -18,6 +18,8 @@ import concurrent.futures
 import logging
 import os
 import subprocess
+import time
+import random
 
 
 class NDPITileCropperParallelCLI(object):
@@ -72,8 +74,8 @@ class NDPITileCropperParallelCLI(object):
         parser.add_argument(
             '--num_processes', '-n',
             type=int,
-            default=8,
-            help='Number of processes to use for parallel processing.')
+            default=4,
+            help='Number of processes to use for parallel processing. Reduced default to avoid JVM conflicts.')
         parser.add_argument(
             '--overwrite', '-w',
             action='store_true',
@@ -93,6 +95,11 @@ class NDPITileCropperParallelCLI(object):
             '--verbose', '-v',
             action='store_true',
             help='Display more details.')
+        parser.add_argument(
+            '--retry-attempts', '-r',
+            type=int,
+            default=3,
+            help='Number of retry attempts for failed processing due to JVM conflicts.')
 
         return parser
 
@@ -105,14 +112,16 @@ class NDPITileCropperParallelCLI(object):
         return input_files
 
     def __process_file(self, input_file):
-        """Process a file."""
+        """Process a file with retry logic for JVM conflicts."""
         logger.info("Started processing file: {}".format(input_file))
+        
         if self.args.output_dir:
             output_dir = self.args.output_dir
         else:
             output_dir = os.path.splitext(input_file)[0] + "_tiles"
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
+            
         command = ["python", "ndpi_tile_cropper_cli.py", "-i", input_file, "-o", output_dir, "-s", str(self.args.tile_size),
                    "-l", str(self.args.tile_overlap), "-g", str(self.args.log_level)]
 
@@ -123,18 +132,73 @@ class NDPITileCropperParallelCLI(object):
         if self.args.verbose:
             command.append("-v")
 
-        result = subprocess.run(command)
-        logger.info(result)
-        logger.info("Finished processing file: {}".format(input_file))
+        # Retry logic for JVM conflicts
+        for attempt in range(self.args.retry_attempts):
+            try:
+                # Add a small random delay to reduce JVM startup conflicts
+                if attempt > 0:
+                    delay = random.uniform(1.0, 5.0)
+                    logger.info(f"Retry attempt {attempt + 1} for {input_file}, waiting {delay:.2f}s...")
+                    time.sleep(delay)
+                
+                result = subprocess.run(command, capture_output=True, text=True, timeout=3600)  # 1 hour timeout
+                
+                if result.returncode == 0:
+                    logger.info("Successfully finished processing file: {}".format(input_file))
+                    return True
+                else:
+                    logger.error(f"Process failed for {input_file} (attempt {attempt + 1}): {result.stderr}")
+                    if "TJDecompressor" in result.stderr or "javabridge" in result.stderr.lower():
+                        logger.warning(f"JVM conflict detected for {input_file}, will retry...")
+                        continue
+                    else:
+                        logger.error(f"Non-JVM error for {input_file}, not retrying")
+                        return False
+                        
+            except subprocess.TimeoutExpired:
+                logger.error(f"Process timeout for {input_file} (attempt {attempt + 1})")
+                continue
+            except Exception as e:
+                logger.error(f"Unexpected error processing {input_file} (attempt {attempt + 1}): {str(e)}")
+                continue
+        
+        logger.error(f"Failed to process {input_file} after {self.args.retry_attempts} attempts")
+        return False
 
     def process_files_in_parallel(self):
-        """Process the files in parallel."""
+        """Process the files in parallel using ProcessPoolExecutor."""
         logger.info("Started processing files in parallel")
         input_files = self._get_input_files()
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self.args.num_processes) as executor:
-            for input_file in input_files:
-                executor.submit(self.__process_file, input_file)
-        logger.info("Finished processing files in parallel")
+        
+        if not input_files:
+            logger.warning("No .ndpi files found in the input directory")
+            return
+            
+        logger.info(f"Found {len(input_files)} .ndpi files to process")
+        
+        # Use ProcessPoolExecutor instead of ThreadPoolExecutor to avoid JVM conflicts
+        with concurrent.futures.ProcessPoolExecutor(max_workers=self.args.num_processes) as executor:
+            # Submit all tasks
+            future_to_file = {executor.submit(self.__process_file, input_file): input_file 
+                            for input_file in input_files}
+            
+            # Process completed tasks
+            successful = 0
+            failed = 0
+            
+            for future in concurrent.futures.as_completed(future_to_file):
+                input_file = future_to_file[future]
+                try:
+                    result = future.result()
+                    if result:
+                        successful += 1
+                    else:
+                        failed += 1
+                except Exception as exc:
+                    logger.error(f"File {input_file} generated an exception: {exc}")
+                    failed += 1
+        
+        logger.info(f"Finished processing files in parallel. Successful: {successful}, Failed: {failed}")
 
 
 if __name__ == '__main__':
