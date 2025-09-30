@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update Zenodo URL in the README.
 
 ### Fixed
-- Build error due to base image changing.
+- Build error due to base image changing. [#81](https://github.com/paleopollen/palyim-issues/issues/81)
+- Local build error in macOS. [#82](https://github.com/paleopollen/palyim-issues/issues/82)
 
 ## [1.2.0] - 2025-04-22
 
