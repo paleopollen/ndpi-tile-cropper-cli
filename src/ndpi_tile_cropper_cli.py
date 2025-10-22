@@ -21,6 +21,7 @@ import os
 import shutil
 import signal
 import multiprocessing as mp
+import concurrent.futures
 from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
 
@@ -292,33 +293,19 @@ class NDPIFileCropper:
             with open(crops_dir_metadata_file_path, 'w') as f:
                 json.dump(crops_dir_metadata_dict, f, indent=4)
 
-        # Prepare tile processing arguments
-        tile_args = []
-        for i, (start_x, start_y) in enumerate(start_xy_list):
-            tile_args.append({
-                'tile_index': i,
-                'start_x': start_x,
-                'start_y': start_y,
-                'width': width,
-                'height': height,
-                'crops_dir': crops_dir,
-                'input_file_path': self.input_file_path,
-                'input_filename': self.input_filename,
-                'z_planes': self.metadata['z_plane'],
-                'tile_format': self.tile_format,
-                'overwrite_flag': self.overwrite_flag
-            })
-
-        # Process tiles in parallel
-        logger.info(self.input_filename + f": Starting parallel tile processing with {num_processes} processes")
+        # Use thread-based parallelization instead of process-based to avoid JVM conflicts
+        logger.info(self.input_filename + f": Starting parallel tile processing with {num_processes} threads")
         
-        with ProcessPoolExecutor(max_workers=num_processes) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_processes) as executor:
             # Submit all tile processing tasks
-            futures = [executor.submit(process_single_tile_parallel, args) for args in tile_args]
+            futures = []
+            for i, (start_x, start_y) in enumerate(start_xy_list):
+                future = executor.submit(self._process_single_tile_threaded, i, start_x, start_y, width, height, crops_dir)
+                futures.append(future)
             
             # Wait for completion with progress bar
             with tqdm(total=len(futures), desc=f"Processing tiles for {self.input_filename}", unit="tile") as pbar:
-                for future in futures:
+                for future in concurrent.futures.as_completed(futures):
                     try:
                         result = future.result()
                         if result:
@@ -328,6 +315,31 @@ class NDPIFileCropper:
                     pbar.update(1)
         
         logger.info(self.input_filename + f": Completed processing {self.processed_tile_count} tiles")
+
+    def _process_single_tile_threaded(self, tile_index, start_x, start_y, width, height, crops_dir):
+        """Process a single tile using threading (shared JVM)."""
+        try:
+            tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
+            if not os.path.exists(tile_dir):
+                os.makedirs(tile_dir)
+
+            z_plane_image_count = self.__count_files(tile_dir, self.tile_format)
+            
+            if z_plane_image_count < self.metadata['z_plane'] or self.overwrite_flag:
+                for j in range(self.metadata['z_plane']):
+                    img = self.__read_tile(x=start_x, y=start_y, z=j, width=width, height=height)
+                    if img is not None:
+                        im = Image.fromarray(img)
+                        im.save(os.path.join(tile_dir, str(j) + 'z.png'))
+            else:
+                logger.info(self.input_filename + ": Tile " + str(tile_index) + " already exists. Skipping...")
+            
+            logger.info(self.input_filename + ": Tile " + str(tile_index) + " complete.")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error processing tile {tile_index}: {e}")
+            return False
 
     def write_metadata_before_exiting(self):
         crops_dir = str(os.path.join(self.output_dir, os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]))
@@ -416,14 +428,24 @@ def process_single_tile_parallel(args):
     import os
     import glob
     import logging
+    import time
+    import random
     
     # Set up logging for this process
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s')
     logger = logging.getLogger(f"tile_processor_{args['tile_index']}")
     
     try:
-        # Start JVM for this process
-        javabridge.start_vm(class_path=bioformats.JARS, run_headless=True)
+        # Add random delay to prevent JVM startup conflicts
+        time.sleep(random.uniform(0.1, 0.5))
+        
+        # Start JVM for this process with better isolation
+        javabridge.start_vm(
+            class_path=bioformats.JARS, 
+            run_headless=True,
+            max_heap_size='2g',
+            jvm_options=['-Djava.awt.headless=true', '-XX:+UseG1GC']
+        )
         
         # Create tile directory
         tile_dir = os.path.join(args['crops_dir'], f"{args['start_x']}x_{args['start_y']}y")
