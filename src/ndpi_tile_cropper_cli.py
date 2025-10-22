@@ -20,6 +20,9 @@ import logging
 import os
 import shutil
 import signal
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor
+from tqdm import tqdm
 
 import bioformats
 import bioformats.formatreader as format_reader
@@ -101,6 +104,11 @@ class NDPITileCropperCLI(object):
             '--verbose', '-v',
             action='store_true',
             help='Display more details.')
+        parser.add_argument(
+            '--num_processes', '-n',
+            type=int,
+            default=1,
+            help='Number of processes to use for parallel tile processing.')
 
         return parser
 
@@ -173,11 +181,17 @@ class NDPIFileCropper:
         files = glob.glob(os.path.join(directory, "*." + file_extension))
         return len(files)
 
-    def crop_tiles(self):
-        """Crop tiles from an NDPISlide."""
-        logger.info(self.input_filename + ": Crop tiles from NDPISlide")
+    def crop_tiles(self, num_processes=None):
+        """Crop tiles from an NDPISlide with optional parallel processing."""
+        if num_processes and num_processes > 1:
+            return self.crop_tiles_parallel(num_processes)
+        else:
+            return self.crop_tiles_sequential()
+    
+    def crop_tiles_sequential(self):
+        """Crop tiles from an NDPISlide (original sequential method)."""
+        logger.info(self.input_filename + ": Crop tiles from NDPISlide (sequential)")
         img_name = os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]
-        # core_name = self.input_file.split('/')[-2].split('_')[0]
         crops_dir = str(os.path.join(self.output_dir, img_name))
         if not os.path.exists(crops_dir):
             os.makedirs(crops_dir)
@@ -236,6 +250,84 @@ class NDPIFileCropper:
                 logger.info(self.input_filename + ": Tile " + str(i) + " already exists. Skipping...")
             self.processed_tile_count += 1
             logger.info(self.input_filename + ": Tile " + str(i) + " complete.")
+
+    def crop_tiles_parallel(self, num_processes):
+        """Crop tiles from an NDPISlide using parallel processing."""
+        logger.info(self.input_filename + f": Crop tiles from NDPISlide (parallel, {num_processes} processes)")
+        img_name = os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]
+        crops_dir = str(os.path.join(self.output_dir, img_name))
+        if not os.path.exists(crops_dir):
+            os.makedirs(crops_dir)
+
+        width = self._get_tile_size()
+        height = self._get_tile_size()
+        overlap = self._get_tile_overlap()
+
+        # Find total number of image stacks
+        start_x_list = np.arange(0, self.metadata['width'] - width, width - overlap).tolist()
+        start_y_list = np.arange(0, self.metadata['height'] - height, height - overlap).tolist()
+        start_xy_list = []
+
+        for i in range(len(start_x_list)):
+            for j in range(len(start_y_list)):
+                x = start_x_list[i]
+                y = start_y_list[j]
+                xy = (x, y)
+                start_xy_list.append(xy)
+
+        logger.info(self.input_filename + ": Number of tiles: " + str(len(start_xy_list)))
+        self.total_tile_count = len(start_xy_list)
+
+        # Write metadata
+        crops_dir_metadata_dict = dict()
+        crops_dir_metadata_dict['tile_size'] = self.tile_size
+        crops_dir_metadata_dict['tile_overlap'] = self.tile_overlap
+        crops_dir_metadata_dict['ome_metadata'] = self.metadata
+        crops_dir_metadata_dict['total_tile_count'] = self.total_tile_count
+        crops_dir_metadata_dict['processed_tile_count'] = 0
+        crops_dir_metadata_dict['percent_complete'] = 0.0
+
+        crops_dir_metadata_file_path = os.path.join(crops_dir, 'metadata.json')
+        if not os.path.exists(crops_dir_metadata_file_path):
+            with open(crops_dir_metadata_file_path, 'w') as f:
+                json.dump(crops_dir_metadata_dict, f, indent=4)
+
+        # Prepare tile processing arguments
+        tile_args = []
+        for i, (start_x, start_y) in enumerate(start_xy_list):
+            tile_args.append({
+                'tile_index': i,
+                'start_x': start_x,
+                'start_y': start_y,
+                'width': width,
+                'height': height,
+                'crops_dir': crops_dir,
+                'input_file_path': self.input_file_path,
+                'input_filename': self.input_filename,
+                'z_planes': self.metadata['z_plane'],
+                'tile_format': self.tile_format,
+                'overwrite_flag': self.overwrite_flag
+            })
+
+        # Process tiles in parallel
+        logger.info(self.input_filename + f": Starting parallel tile processing with {num_processes} processes")
+        
+        with ProcessPoolExecutor(max_workers=num_processes) as executor:
+            # Submit all tile processing tasks
+            futures = [executor.submit(process_single_tile_parallel, args) for args in tile_args]
+            
+            # Wait for completion with progress bar
+            with tqdm(total=len(futures), desc=f"Processing tiles for {self.input_filename}", unit="tile") as pbar:
+                for future in futures:
+                    try:
+                        result = future.result()
+                        if result:
+                            self.processed_tile_count += 1
+                    except Exception as e:
+                        logger.error(f"Error processing tile: {e}")
+                    pbar.update(1)
+        
+        logger.info(self.input_filename + f": Completed processing {self.processed_tile_count} tiles")
 
     def write_metadata_before_exiting(self):
         crops_dir = str(os.path.join(self.output_dir, os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]))
@@ -315,6 +407,70 @@ class NDPIFileCropper:
         exit(0)
 
 
+def process_single_tile_parallel(args):
+    """Process a single tile in a separate process for parallel execution."""
+    import bioformats
+    import bioformats.formatreader as format_reader
+    import javabridge
+    from PIL import Image
+    import os
+    import glob
+    import logging
+    
+    # Set up logging for this process
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s')
+    logger = logging.getLogger(f"tile_processor_{args['tile_index']}")
+    
+    try:
+        # Start JVM for this process
+        javabridge.start_vm(class_path=bioformats.JARS, run_headless=True)
+        
+        # Create tile directory
+        tile_dir = os.path.join(args['crops_dir'], f"{args['start_x']}x_{args['start_y']}y")
+        if not os.path.exists(tile_dir):
+            os.makedirs(tile_dir)
+        
+        # Check if tile already exists
+        existing_files = glob.glob(os.path.join(tile_dir, f"*.{args['tile_format']}"))
+        if len(existing_files) >= args['z_planes'] and not args['overwrite_flag']:
+            logger.info(f"Tile {args['tile_index']} already exists. Skipping...")
+            return True
+        
+        # Process all z-planes for this tile
+        for z in range(args['z_planes']):
+            try:
+                # Read tile from NDPI file
+                ImageReader = format_reader.make_image_reader_class()
+                reader = ImageReader()
+                reader.setId(args['input_file_path'])
+                
+                img = reader.openBytesXYWH(z, args['start_x'], args['start_y'], args['width'], args['height'])
+                img.shape = (args['height'], args['width'], 3)
+                
+                # Save image
+                im = Image.fromarray(img)
+                im.save(os.path.join(tile_dir, f"{z}z.png"))
+                
+                reader.close()
+                
+            except Exception as e:
+                logger.error(f"Error processing z-plane {z} for tile {args['tile_index']}: {e}")
+                return False
+        
+        logger.info(f"Tile {args['tile_index']} completed successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error processing tile {args['tile_index']}: {e}")
+        return False
+    finally:
+        # Clean up JVM
+        try:
+            javabridge.kill_vm()
+        except:
+            pass
+
+
 if __name__ == '__main__':
 
     # Start the JVM
@@ -345,7 +501,7 @@ if __name__ == '__main__':
             ndpi_file_cropper.unzip_tiles()
 
         # Crop tiles from the NDPISlide
-        ndpi_file_cropper.crop_tiles()
+        ndpi_file_cropper.crop_tiles(cli.args.num_processes)
 
         # Write metadata before exiting
         ndpi_file_cropper.write_metadata_before_exiting()
