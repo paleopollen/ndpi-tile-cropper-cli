@@ -184,7 +184,7 @@ class NDPIFileCropper:
 
     def crop_tiles(self, num_processes=None):
         """Crop tiles from an NDPISlide with optional parallel processing."""
-        if num_processes and num_processes > 1:
+        if num_processes is not None:
             return self.crop_tiles_parallel(num_processes)
         else:
             return self.crop_tiles_sequential()
@@ -254,7 +254,7 @@ class NDPIFileCropper:
 
     def crop_tiles_parallel(self, num_processes):
         """Crop tiles from an NDPISlide using optimized sequential processing."""
-        logger.info(self.input_filename + f": Crop tiles from NDPISlide (optimized sequential, {num_processes} processes)")
+        logger.info(self.input_filename + f": Crop tiles from NDPISlide (optimized, {num_processes} processes)")
         img_name = os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]
         crops_dir = str(os.path.join(self.output_dir, img_name))
         if not os.path.exists(crops_dir):
