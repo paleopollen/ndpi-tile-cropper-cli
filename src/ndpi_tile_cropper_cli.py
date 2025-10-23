@@ -253,8 +253,8 @@ class NDPIFileCropper:
             logger.info(self.input_filename + ": Tile " + str(i) + " complete.")
 
     def crop_tiles_parallel(self, num_processes):
-        """Crop tiles from an NDPISlide using parallel processing."""
-        logger.info(self.input_filename + f": Crop tiles from NDPISlide (parallel, {num_processes} processes)")
+        """Crop tiles from an NDPISlide using optimized sequential processing."""
+        logger.info(self.input_filename + f": Crop tiles from NDPISlide (optimized sequential, {num_processes} processes)")
         img_name = os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]
         crops_dir = str(os.path.join(self.output_dir, img_name))
         if not os.path.exists(crops_dir):
@@ -293,31 +293,31 @@ class NDPIFileCropper:
             with open(crops_dir_metadata_file_path, 'w') as f:
                 json.dump(crops_dir_metadata_dict, f, indent=4)
 
-        # Use thread-based parallelization instead of process-based to avoid JVM conflicts
-        logger.info(self.input_filename + f": Starting parallel tile processing with {num_processes} threads")
+        # Use optimized sequential processing with better I/O patterns
+        logger.info(self.input_filename + f": Starting optimized tile processing")
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=num_processes) as executor:
-            # Submit all tile processing tasks
-            futures = []
-            for i, (start_x, start_y) in enumerate(start_xy_list):
-                future = executor.submit(self._process_single_tile_threaded, i, start_x, start_y, width, height, crops_dir)
-                futures.append(future)
-            
-            # Wait for completion with progress bar
-            with tqdm(total=len(futures), desc=f"Processing tiles for {self.input_filename}", unit="tile") as pbar:
-                for future in concurrent.futures.as_completed(futures):
+        # Pre-allocate reader for better performance
+        ImageReader = format_reader.make_image_reader_class()
+        reader = ImageReader()
+        reader.setId(self.input_file_path)
+        
+        try:
+            # Process tiles with progress bar
+            with tqdm(total=len(start_xy_list), desc=f"Processing tiles for {self.input_filename}", unit="tile") as pbar:
+                for i, (start_x, start_y) in enumerate(start_xy_list):
                     try:
-                        result = future.result()
-                        if result:
-                            self.processed_tile_count += 1
+                        self._process_single_tile_optimized(i, start_x, start_y, width, height, crops_dir, reader)
+                        self.processed_tile_count += 1
                     except Exception as e:
-                        logger.error(f"Error processing tile: {e}")
+                        logger.error(f"Error processing tile {i}: {e}")
                     pbar.update(1)
+        finally:
+            reader.close()
         
         logger.info(self.input_filename + f": Completed processing {self.processed_tile_count} tiles")
 
-    def _process_single_tile_threaded(self, tile_index, start_x, start_y, width, height, crops_dir):
-        """Process a single tile using threading (shared JVM)."""
+    def _process_single_tile_optimized(self, tile_index, start_x, start_y, width, height, crops_dir, reader):
+        """Process a single tile with optimized I/O."""
         try:
             tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
             if not os.path.exists(tile_dir):
@@ -326,8 +326,49 @@ class NDPIFileCropper:
             z_plane_image_count = self.__count_files(tile_dir, self.tile_format)
             
             if z_plane_image_count < self.metadata['z_plane'] or self.overwrite_flag:
+                # Process all z-planes for this tile
                 for j in range(self.metadata['z_plane']):
-                    img = self.__read_tile(x=start_x, y=start_y, z=j, width=width, height=height)
+                    try:
+                        img = reader.openBytesXYWH(j, start_x, start_y, width, height)
+                        img.shape = (height, width, 3)
+                        
+                        if img is not None:
+                            im = Image.fromarray(img)
+                            im.save(os.path.join(tile_dir, str(j) + 'z.png'))
+                    except Exception as e:
+                        logger.error(f"Error processing z-plane {j} for tile {tile_index}: {e}")
+            else:
+                logger.info(self.input_filename + ": Tile " + str(tile_index) + " already exists. Skipping...")
+            
+            logger.info(self.input_filename + ": Tile " + str(tile_index) + " complete.")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error processing tile {tile_index}: {e}")
+            return False
+
+    def _process_single_tile_threaded(self, tile_index, start_x, start_y, width, height, crops_dir):
+        """Process a single tile using threading (shared JVM)."""
+        import threading
+        
+        # Use a lock to ensure thread-safe access to the JVM
+        if not hasattr(self, '_jvm_lock'):
+            self._jvm_lock = threading.Lock()
+        
+        try:
+            tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
+            if not os.path.exists(tile_dir):
+                os.makedirs(tile_dir)
+
+            z_plane_image_count = self.__count_files(tile_dir, self.tile_format)
+            
+            if z_plane_image_count < self.metadata['z_plane'] or self.overwrite_flag:
+                # Process all z-planes for this tile
+                for j in range(self.metadata['z_plane']):
+                    # Use lock to ensure thread-safe JVM access
+                    with self._jvm_lock:
+                        img = self.__read_tile(x=start_x, y=start_y, z=j, width=width, height=height)
+                    
                     if img is not None:
                         im = Image.fromarray(img)
                         im.save(os.path.join(tile_dir, str(j) + 'z.png'))
