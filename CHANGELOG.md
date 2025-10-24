@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update Zenodo URL in the README.
 
 ### Fixed
+- Build error due to base image changing.
 - Issue related to JavaBridge when running parallel tasks on HPC.
 
 ## [1.2.0] - 2025-04-22
