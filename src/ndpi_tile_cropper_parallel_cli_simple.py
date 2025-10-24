@@ -22,69 +22,12 @@ import time
 import random
 
 
-def process_single_file(input_file, output_dir, tile_size, tile_overlap, log_level, overwrite_flag, zip_flag, verbose_flag, retry_attempts):
-    """Process a single file with retry logic for JVM conflicts.
-    
-    This function is designed to be picklable for ProcessPoolExecutor.
-    """
-    logger = logging.getLogger("ndpi_tile_cropper_parallel_cli.py")
-    logger.info("Started processing file: {}".format(input_file))
-    
-    if not output_dir:
-        output_dir = os.path.splitext(input_file)[0] + "_tiles"
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-        
-    command = ["python", "ndpi_tile_cropper_cli.py", "-i", input_file, "-o", output_dir, "-s", str(tile_size),
-               "-l", str(tile_overlap), "-g", str(log_level)]
-
-    if overwrite_flag:
-        command.append("-w")
-    if zip_flag:
-        command.append("-z")
-    if verbose_flag:
-        command.append("-v")
-
-    # Retry logic for JVM conflicts
-    for attempt in range(retry_attempts):
-        try:
-            # Add a small random delay to reduce JVM startup conflicts
-            if attempt > 0:
-                delay = random.uniform(1.0, 5.0)
-                logger.info(f"Retry attempt {attempt + 1} for {input_file}, waiting {delay:.2f}s...")
-                time.sleep(delay)
-            
-            result = subprocess.run(command, capture_output=True, text=True, timeout=3600)  # 1 hour timeout
-            
-            if result.returncode == 0:
-                logger.info("Successfully finished processing file: {}".format(input_file))
-                return True
-            else:
-                logger.error(f"Process failed for {input_file} (attempt {attempt + 1}): {result.stderr}")
-                if "TJDecompressor" in result.stderr or "javabridge" in result.stderr.lower():
-                    logger.warning(f"JVM conflict detected for {input_file}, will retry...")
-                    continue
-                else:
-                    logger.error(f"Non-JVM error for {input_file}, not retrying")
-                    return False
-                    
-        except subprocess.TimeoutExpired:
-            logger.error(f"Process timeout for {input_file} (attempt {attempt + 1})")
-            continue
-        except Exception as e:
-            logger.error(f"Unexpected error processing {input_file} (attempt {attempt + 1}): {str(e)}")
-            continue
-    
-    logger.error(f"Failed to process {input_file} after {retry_attempts} attempts")
-    return False
-
-
-class NDPITileCropperParallelCLI(object):
-    """Parallel Command line interface for NDPI Tile Cropper. This works on a directory of NDPI files
-    (not recursively)."""
+class NDPITileCropperParallelCLISimple(object):
+    """Simple Parallel Command line interface for NDPI Tile Cropper using ThreadPoolExecutor.
+    This avoids pickling issues while still providing JVM conflict handling."""
 
     def __init__(self):
-        """Initialize an NDPITileCropperParallelCLI instance."""
+        """Initialize an NDPITileCropperParallelCLISimple instance."""
         self.parser = self._create_parser()
         self.args = None
 
@@ -105,7 +48,7 @@ class NDPITileCropperParallelCLI(object):
     def _create_parser():
         """Create a parser for the command line arguments."""
         parser = argparse.ArgumentParser(
-            description='Crop and generate tile images from an NDPI format image file using parallel processing.')
+            description='Crop and generate tile images from an NDPI format image file using simple parallel processing.')
         parser.add_argument(
             '--input-dir', '-d',
             nargs='?', default=None, required=True,
@@ -131,8 +74,8 @@ class NDPITileCropperParallelCLI(object):
         parser.add_argument(
             '--num_processes', '-n',
             type=int,
-            default=4,
-            help='Number of processes to use for parallel processing. Reduced default to avoid JVM conflicts.')
+            default=2,
+            help='Number of threads to use for parallel processing. Reduced default to avoid JVM conflicts.')
         parser.add_argument(
             '--overwrite', '-w',
             action='store_true',
@@ -168,10 +111,65 @@ class NDPITileCropperParallelCLI(object):
                 input_files.append(os.path.join(self.args.input_dir, file))
         return input_files
 
+    def __process_file(self, input_file):
+        """Process a file with retry logic for JVM conflicts."""
+        logger = logging.getLogger("ndpi_tile_cropper_parallel_cli_simple.py")
+        logger.info("Started processing file: {}".format(input_file))
+        
+        if self.args.output_dir:
+            output_dir = self.args.output_dir
+        else:
+            output_dir = os.path.splitext(input_file)[0] + "_tiles"
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
+        command = ["python", "ndpi_tile_cropper_cli.py", "-i", input_file, "-o", output_dir, "-s", str(self.args.tile_size),
+                   "-l", str(self.args.tile_overlap), "-g", str(self.args.log_level)]
+
+        if self.args.overwrite:
+            command.append("-w")
+        if self.args.zip:
+            command.append("-z")
+        if self.args.verbose:
+            command.append("-v")
+
+        # Retry logic for JVM conflicts
+        for attempt in range(self.args.retry_attempts):
+            try:
+                # Add a small random delay to reduce JVM startup conflicts
+                if attempt > 0:
+                    delay = random.uniform(2.0, 8.0)
+                    logger.info(f"Retry attempt {attempt + 1} for {input_file}, waiting {delay:.2f}s...")
+                    time.sleep(delay)
+                
+                result = subprocess.run(command, capture_output=True, text=True, timeout=3600)  # 1 hour timeout
+                
+                if result.returncode == 0:
+                    logger.info("Successfully finished processing file: {}".format(input_file))
+                    return True
+                else:
+                    logger.error(f"Process failed for {input_file} (attempt {attempt + 1}): {result.stderr}")
+                    if "TJDecompressor" in result.stderr or "javabridge" in result.stderr.lower():
+                        logger.warning(f"JVM conflict detected for {input_file}, will retry...")
+                        continue
+                    else:
+                        logger.error(f"Non-JVM error for {input_file}, not retrying")
+                        return False
+                        
+            except subprocess.TimeoutExpired:
+                logger.error(f"Process timeout for {input_file} (attempt {attempt + 1})")
+                continue
+            except Exception as e:
+                logger.error(f"Unexpected error processing {input_file} (attempt {attempt + 1}): {str(e)}")
+                continue
+        
+        logger.error(f"Failed to process {input_file} after {self.args.retry_attempts} attempts")
+        return False
+
     def process_files_in_parallel(self):
-        """Process the files in parallel using ProcessPoolExecutor."""
-        logger = logging.getLogger("ndpi_tile_cropper_parallel_cli.py")
-        logger.info("Started processing files in parallel")
+        """Process the files in parallel using ThreadPoolExecutor."""
+        logger = logging.getLogger("ndpi_tile_cropper_parallel_cli_simple.py")
+        logger.info("Started processing files in parallel (simple mode)")
         input_files = self._get_input_files()
         
         if not input_files:
@@ -180,34 +178,11 @@ class NDPITileCropperParallelCLI(object):
             
         logger.info(f"Found {len(input_files)} .ndpi files to process")
         
-        # Extract arguments as simple data types for pickling
-        output_dir = self.args.output_dir
-        tile_size = self.args.tile_size
-        tile_overlap = self.args.tile_overlap
-        log_level = self.args.log_level
-        overwrite_flag = self.args.overwrite
-        zip_flag = self.args.zip
-        verbose_flag = self.args.verbose
-        retry_attempts = self.args.retry_attempts
-        
-        # Use ProcessPoolExecutor with picklable function
-        with concurrent.futures.ProcessPoolExecutor(max_workers=self.args.num_processes) as executor:
-            # Submit all tasks with simple arguments
-            future_to_file = {
-                executor.submit(
-                    process_single_file, 
-                    input_file, 
-                    output_dir, 
-                    tile_size, 
-                    tile_overlap, 
-                    log_level, 
-                    overwrite_flag, 
-                    zip_flag, 
-                    verbose_flag, 
-                    retry_attempts
-                ): input_file 
-                for input_file in input_files
-            }
+        # Use ThreadPoolExecutor to avoid pickling issues
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.args.num_processes) as executor:
+            # Submit all tasks
+            future_to_file = {executor.submit(self.__process_file, input_file): input_file 
+                            for input_file in input_files}
             
             # Process completed tasks
             successful = 0
@@ -230,13 +205,13 @@ class NDPITileCropperParallelCLI(object):
 
 if __name__ == '__main__':
     # Create an instance of the CLI and parse the arguments
-    cli = NDPITileCropperParallelCLI()
+    cli = NDPITileCropperParallelCLISimple()
     cli.parse_args()
     cli.print_args()
 
     # Set up logging
     logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s', level=cli.args.log_level)
-    logger = logging.getLogger("ndpi_tile_cropper_parallel_cli.py")
+    logger = logging.getLogger("ndpi_tile_cropper_parallel_cli_simple.py")
 
     # Process the files in parallel
-    cli.process_files_in_parallel()
+    cli.process_files_in_parallel() 

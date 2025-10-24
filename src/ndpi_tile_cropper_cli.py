@@ -164,8 +164,14 @@ class NDPIFileCropper:
         except Exception as ex:
             logger.error(self.input_filename + ": Error reading tile: " + str(x) + "x_" + str(y) + "y_" + str(z) + "z")
             logger.error(ex, exc_info=True)
+            # Check if it's a JVM-related error and provide more specific logging
+            if "TJDecompressor" in str(ex) or "javabridge" in str(ex).lower():
+                logger.error("JVM conflict detected. This may be due to multiple processes accessing the same JVM resources.")
         finally:
-            reader.close()
+            try:
+                reader.close()
+            except:
+                pass  # Ignore errors during cleanup
             return img
 
     @staticmethod
@@ -317,8 +323,16 @@ class NDPIFileCropper:
 
 if __name__ == '__main__':
 
-    # Start the JVM
-    javabridge.start_vm(class_path=bioformats.JARS, run_headless=True)
+    # Start the JVM with better error handling
+    try:
+        javabridge.start_vm(class_path=bioformats.JARS, run_headless=True)
+        logger = logging.getLogger("ndpi_tile_cropper_cli.py")
+        logger.info("JVM started successfully")
+    except Exception as e:
+        print(f"Failed to start JVM: {e}")
+        print("This may be due to JVM conflicts when running multiple instances.")
+        print("Try reducing the number of parallel processes or adding delays between process starts.")
+        exit(1)
 
     # Parse the command line arguments
     cli = NDPITileCropperCLI()
@@ -359,9 +373,15 @@ if __name__ == '__main__':
         logger.error(e, exc_info=True)
     finally:
         # Write metadata before exiting
-        ndpi_file_cropper.write_metadata_before_exiting()
+        try:
+            ndpi_file_cropper.write_metadata_before_exiting()
+        except:
+            pass  # Ignore errors during cleanup
 
         # Stop the JVM
-        logger.info("Shutting down JVM.")
-        javabridge.kill_vm()
-        logger.info("Stopping NDPITileCropper CLI")
+        try:
+            logger.info("Shutting down JVM.")
+            javabridge.kill_vm()
+            logger.info("Stopping NDPITileCropper CLI")
+        except:
+            pass  # Ignore errors during JVM shutdown
