@@ -20,9 +20,6 @@ import logging
 import os
 import shutil
 import signal
-import multiprocessing as mp
-import concurrent.futures
-from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
 
 import bioformats
@@ -105,11 +102,6 @@ class NDPITileCropperCLI(object):
             '--verbose', '-v',
             action='store_true',
             help='Display more details.')
-        parser.add_argument(
-            '--num_processes', '-n',
-            type=int,
-            default=1,
-            help='Number of processes to use for parallel tile processing.')
 
         return parser
 
@@ -182,16 +174,9 @@ class NDPIFileCropper:
         files = glob.glob(os.path.join(directory, "*." + file_extension))
         return len(files)
 
-    def crop_tiles(self, num_processes=None):
-        """Crop tiles from an NDPISlide with optional parallel processing."""
-        if num_processes is not None:
-            return self.crop_tiles_parallel(num_processes)
-        else:
-            return self.crop_tiles_sequential()
-    
-    def crop_tiles_sequential(self):
-        """Crop tiles from an NDPISlide (original sequential method)."""
-        logger.info(self.input_filename + ": Crop tiles from NDPISlide (sequential)")
+    def crop_tiles(self):
+        """Crop tiles from an NDPISlide using optimized I/O."""
+        logger.info(self.input_filename + ": Crop tiles from NDPISlide")
         img_name = os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]
         crops_dir = str(os.path.join(self.output_dir, img_name))
         if not os.path.exists(crops_dir):
@@ -225,78 +210,11 @@ class NDPIFileCropper:
         crops_dir_metadata_dict['percent_complete'] = 0.0
 
         crops_dir_metadata_file_path = os.path.join(crops_dir, 'metadata.json')
-
-        # Write metadata to the crops directory if it does not exist
         if not os.path.exists(crops_dir_metadata_file_path):
             with open(crops_dir_metadata_file_path, 'w') as f:
                 json.dump(crops_dir_metadata_dict, f, indent=4)
 
-        for i in range(len(start_xy_list)):
-            start_x = start_xy_list[i][0]
-            start_y = start_xy_list[i][1]
-            tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
-            if not os.path.exists(tile_dir):
-                os.makedirs(tile_dir)
-
-            z_plane_image_count = self.__count_files(tile_dir, self.tile_format)
-            # Proceed only if the number of z-plane images is less than the number of z-planes in the image or if the
-            # overwrite flag is set
-            if z_plane_image_count < self.metadata['z_plane'] or self.overwrite_flag:
-                for j in range(self.metadata['z_plane']):
-                    img = self.__read_tile(x=start_x, y=start_y, z=j, width=width, height=height)
-                    if img is not None:
-                        im = Image.fromarray(img)
-                        im.save(os.path.join(tile_dir, str(j) + 'z.png'))
-            else:
-                logger.info(self.input_filename + ": Tile " + str(i) + " already exists. Skipping...")
-            self.processed_tile_count += 1
-            logger.info(self.input_filename + ": Tile " + str(i) + " complete.")
-
-    def crop_tiles_parallel(self, num_processes):
-        """Crop tiles from an NDPISlide using optimized sequential processing."""
-        logger.info(self.input_filename + f": Crop tiles from NDPISlide (optimized, {num_processes} processes)")
-        img_name = os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]
-        crops_dir = str(os.path.join(self.output_dir, img_name))
-        if not os.path.exists(crops_dir):
-            os.makedirs(crops_dir)
-
-        width = self._get_tile_size()
-        height = self._get_tile_size()
-        overlap = self._get_tile_overlap()
-
-        # Find total number of image stacks
-        start_x_list = np.arange(0, self.metadata['width'] - width, width - overlap).tolist()
-        start_y_list = np.arange(0, self.metadata['height'] - height, height - overlap).tolist()
-        start_xy_list = []
-
-        for i in range(len(start_x_list)):
-            for j in range(len(start_y_list)):
-                x = start_x_list[i]
-                y = start_y_list[j]
-                xy = (x, y)
-                start_xy_list.append(xy)
-
-        logger.info(self.input_filename + ": Number of tiles: " + str(len(start_xy_list)))
-        self.total_tile_count = len(start_xy_list)
-
-        # Write metadata
-        crops_dir_metadata_dict = dict()
-        crops_dir_metadata_dict['tile_size'] = self.tile_size
-        crops_dir_metadata_dict['tile_overlap'] = self.tile_overlap
-        crops_dir_metadata_dict['ome_metadata'] = self.metadata
-        crops_dir_metadata_dict['total_tile_count'] = self.total_tile_count
-        crops_dir_metadata_dict['processed_tile_count'] = 0
-        crops_dir_metadata_dict['percent_complete'] = 0.0
-
-        crops_dir_metadata_file_path = os.path.join(crops_dir, 'metadata.json')
-        if not os.path.exists(crops_dir_metadata_file_path):
-            with open(crops_dir_metadata_file_path, 'w') as f:
-                json.dump(crops_dir_metadata_dict, f, indent=4)
-
-        # Use optimized sequential processing with better I/O patterns
-        logger.info(self.input_filename + f": Starting optimized tile processing")
-        
-        # Pre-allocate reader for better performance
+        # Pre-allocate reader for better performance (KEY OPTIMIZATION)
         ImageReader = format_reader.make_image_reader_class()
         reader = ImageReader()
         reader.setId(self.input_file_path)
@@ -305,82 +223,32 @@ class NDPIFileCropper:
             # Process tiles with progress bar
             with tqdm(total=len(start_xy_list), desc=f"Processing tiles for {self.input_filename}", unit="tile") as pbar:
                 for i, (start_x, start_y) in enumerate(start_xy_list):
-                    try:
-                        self._process_single_tile_optimized(i, start_x, start_y, width, height, crops_dir, reader)
-                        self.processed_tile_count += 1
-                    except Exception as e:
-                        logger.error(f"Error processing tile {i}: {e}")
+                    tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
+                    if not os.path.exists(tile_dir):
+                        os.makedirs(tile_dir)
+
+                    z_plane_image_count = self.__count_files(tile_dir, self.tile_format)
+                    
+                    if z_plane_image_count < self.metadata['z_plane'] or self.overwrite_flag:
+                        # Process all z-planes for this tile
+                        for j in range(self.metadata['z_plane']):
+                            try:
+                                img = reader.openBytesXYWH(j, start_x, start_y, width, height)
+                                img.shape = (height, width, 3)
+                                
+                                if img is not None:
+                                    im = Image.fromarray(img)
+                                    im.save(os.path.join(tile_dir, str(j) + 'z.png'))
+                            except Exception as e:
+                                logger.error(f"Error processing z-plane {j} for tile {i}: {e}")
+                    else:
+                        logger.info(self.input_filename + ": Tile " + str(i) + " already exists. Skipping...")
+                    
+                    self.processed_tile_count += 1
+                    logger.info(self.input_filename + ": Tile " + str(i) + " complete.")
                     pbar.update(1)
         finally:
             reader.close()
-        
-        logger.info(self.input_filename + f": Completed processing {self.processed_tile_count} tiles")
-
-    def _process_single_tile_optimized(self, tile_index, start_x, start_y, width, height, crops_dir, reader):
-        """Process a single tile with optimized I/O."""
-        try:
-            tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
-            if not os.path.exists(tile_dir):
-                os.makedirs(tile_dir)
-
-            z_plane_image_count = self.__count_files(tile_dir, self.tile_format)
-            
-            if z_plane_image_count < self.metadata['z_plane'] or self.overwrite_flag:
-                # Process all z-planes for this tile
-                for j in range(self.metadata['z_plane']):
-                    try:
-                        img = reader.openBytesXYWH(j, start_x, start_y, width, height)
-                        img.shape = (height, width, 3)
-                        
-                        if img is not None:
-                            im = Image.fromarray(img)
-                            im.save(os.path.join(tile_dir, str(j) + 'z.png'))
-                    except Exception as e:
-                        logger.error(f"Error processing z-plane {j} for tile {tile_index}: {e}")
-            else:
-                logger.info(self.input_filename + ": Tile " + str(tile_index) + " already exists. Skipping...")
-            
-            logger.info(self.input_filename + ": Tile " + str(tile_index) + " complete.")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error processing tile {tile_index}: {e}")
-            return False
-
-    def _process_single_tile_threaded(self, tile_index, start_x, start_y, width, height, crops_dir):
-        """Process a single tile using threading (shared JVM)."""
-        import threading
-        
-        # Use a lock to ensure thread-safe access to the JVM
-        if not hasattr(self, '_jvm_lock'):
-            self._jvm_lock = threading.Lock()
-        
-        try:
-            tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
-            if not os.path.exists(tile_dir):
-                os.makedirs(tile_dir)
-
-            z_plane_image_count = self.__count_files(tile_dir, self.tile_format)
-            
-            if z_plane_image_count < self.metadata['z_plane'] or self.overwrite_flag:
-                # Process all z-planes for this tile
-                for j in range(self.metadata['z_plane']):
-                    # Use lock to ensure thread-safe JVM access
-                    with self._jvm_lock:
-                        img = self.__read_tile(x=start_x, y=start_y, z=j, width=width, height=height)
-                    
-                    if img is not None:
-                        im = Image.fromarray(img)
-                        im.save(os.path.join(tile_dir, str(j) + 'z.png'))
-            else:
-                logger.info(self.input_filename + ": Tile " + str(tile_index) + " already exists. Skipping...")
-            
-            logger.info(self.input_filename + ": Tile " + str(tile_index) + " complete.")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error processing tile {tile_index}: {e}")
-            return False
 
     def write_metadata_before_exiting(self):
         crops_dir = str(os.path.join(self.output_dir, os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]))
@@ -564,7 +432,7 @@ if __name__ == '__main__':
             ndpi_file_cropper.unzip_tiles()
 
         # Crop tiles from the NDPISlide
-        ndpi_file_cropper.crop_tiles(cli.args.num_processes)
+        ndpi_file_cropper.crop_tiles()
 
         # Write metadata before exiting
         ndpi_file_cropper.write_metadata_before_exiting()
