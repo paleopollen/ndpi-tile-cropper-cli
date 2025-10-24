@@ -1,0 +1,47 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: >-
+  A Command Line Interface for NDPI Format Image Tile
+  Cropping
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Sandeep
+    family-names: Puthanveetil Satheesan
+    affiliation: University of Illinois Urbana-Champaign
+    orcid: 'https://orcid.org/0000-0001-9075-3740'
+  - given-names: Jennifer
+    family-names: Feng
+    affiliation: University of Pennsylvania
+    orcid: 'https://orcid.org/0000-0002-0069-7886'
+  - given-names: Shu
+    family-names: Kong
+    affiliation: University of Macau
+    orcid: 'https://orcid.org/0000-0002-1362-5937'
+  - given-names: Surangi
+    family-names: Punyasena
+    affiliation: University of Illinois Urbana-Champaign
+    orcid: 'https://orcid.org/0000-0003-2110-5840'
+repository-code: 'https://github.com/paleopollen/ndpi-tile-cropper-cli'
+abstract: >-
+  We present NDPI Tile Cropper, a Command Line Interface
+  (CLI) to read Hamamatsu NanoZoomer Digital Pathology Image
+  (NDPI) format files and generate cropped image tiles at
+  all available focal points. This CLI is developed based on
+  Deep Learning and Pollen Detection in the Open World
+  notebooks
+  (https://github.com/fengzard/open_world_pollen_detection)
+  authored by Jennifer T. Feng, Shu Kong, Timme H. Donders,
+  and Surangi W. Punyasena.
+keywords:
+  - Palynology
+  - Tile Cropping
+  - NDPI
+  - Microscopy
+license: Apache-2.0
+version: v1.2.0
+date-released: '2025-04-22'
