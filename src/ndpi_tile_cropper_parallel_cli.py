@@ -18,6 +18,7 @@ import concurrent.futures
 import logging
 import os
 import subprocess
+from tqdm import tqdm
 
 
 class NDPITileCropperParallelCLI(object):
@@ -105,7 +106,7 @@ class NDPITileCropperParallelCLI(object):
         return input_files
 
     def __process_file(self, input_file):
-        """Process a file."""
+        """Process a file with optimized JVM settings."""
         logger.info("Started processing file: {}".format(input_file))
         if self.args.output_dir:
             output_dir = self.args.output_dir
@@ -113,6 +114,11 @@ class NDPITileCropperParallelCLI(object):
             output_dir = os.path.splitext(input_file)[0] + "_tiles"
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
+        
+        # Set JVM memory options for better performance
+        env = os.environ.copy()
+        env['JAVA_OPTS'] = f"-Xmx4g -Xms2g -XX:+UseG1GC"
+        
         command = ["python", "ndpi_tile_cropper_cli.py", "-i", input_file, "-o", output_dir, "-s", str(self.args.tile_size),
                    "-l", str(self.args.tile_overlap), "-g", str(self.args.log_level)]
 
@@ -123,17 +129,28 @@ class NDPITileCropperParallelCLI(object):
         if self.args.verbose:
             command.append("-v")
 
-        result = subprocess.run(command)
+        result = subprocess.run(command, env=env)
         logger.info(result)
         logger.info("Finished processing file: {}".format(input_file))
 
     def process_files_in_parallel(self):
-        """Process the files in parallel."""
+        """Process the files in parallel with progress tracking."""
         logger.info("Started processing files in parallel")
         input_files = self._get_input_files()
+        
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.args.num_processes) as executor:
-            for input_file in input_files:
-                executor.submit(self.__process_file, input_file)
+            # Submit all tasks and collect futures
+            futures = [executor.submit(self.__process_file, input_file) for input_file in input_files]
+            
+            # Wait for all tasks to complete with progress bar
+            with tqdm(total=len(futures), desc="Processing files", unit="file") as pbar:
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        future.result()  # This will raise any exceptions that occurred
+                    except Exception as e:
+                        logger.error(f"Error processing file: {e}")
+                    pbar.update(1)
+        
         logger.info("Finished processing files in parallel")
 
 
