@@ -1,0 +1,6 @@
+{"path": "/Users/rmp6/Documents/palyim/zarr-benchmark/data/region/out/png_w1", "label": "warm", "tile_stack_s": 0.4607, "window256_s": 0.48162, "plane_s": 4.79, "n_tiles": 50, "n_windows": 1000}
+{"path": "/Users/rmp6/Documents/palyim/zarr-benchmark/data/region/out/zarr-b_w1.zarr", "label": "warm", "tile_stack_s": 0.1108, "window256_s": 0.09269, "plane_s": 2.46, "n_tiles": 50, "n_windows": 1000}
+{"path": "/Users/rmp6/Documents/palyim/zarr-benchmark/data/region/out/zarr-c_w1.zarr", "label": "warm", "tile_stack_s": 0.0687, "window256_s": 0.0277, "plane_s": 0.88, "n_tiles": 50, "n_windows": 1000}
+{"path": "/Users/rmp6/Documents/palyim/zarr-benchmark/data/region/out/zarr-c-lz4_w1.zarr", "label": "warm", "tile_stack_s": 0.0611, "window256_s": 0.02151, "plane_s": 1.07, "n_tiles": 50, "n_windows": 1000}
+{"path": "/Users/rmp6/Documents/palyim/zarr-benchmark/data/region/out/zarr-c-z_w1.zarr", "label": "warm", "tile_stack_s": 0.0669, "window256_s": 0.02811, "plane_s": 0.68, "n_tiles": 50, "n_windows": 1000}
+{"path": "/Users/rmp6/Documents/palyim/zarr-benchmark/data/region/out/hdf5_w1.h5", "label": "warm", "tile_stack_s": 0.2854, "window256_s": 0.10887, "plane_s": 0.86, "n_tiles": 50, "n_windows": 1000}
