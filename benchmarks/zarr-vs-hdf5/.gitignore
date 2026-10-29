@@ -1,0 +1,8 @@
+# benchmark data and generated outputs stay out of git (brief: never commit tiles or benchmark outputs)
+data/
+.venv/
+results/**/out_*/
+results/**/sample_tiles_*/
+results/*.log
+results/docker/*.log
+results/**/*.log
