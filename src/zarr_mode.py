@@ -73,7 +73,6 @@ from multiprocessing import shared_memory
 import numpy as np
 
 import palyim_io
-import zarr
 from palyim_io import tile_store
 
 logger = logging.getLogger("ndpi_tile_cropper_cli.py")
@@ -431,28 +430,22 @@ def input_identity(input_path):
     return {"input_file": os.path.basename(input_path), "input_bytes": int(os.path.getsize(input_path))}
 
 
-def _set_input_attrs(path, identity):
-    """Add attrs ``palyim_cropper`` and return the store re-opened. The parent's own key beside palyim-io's two,
-    written right after create (or on the first resume of a store without it), before any worker starts.
-    palyim-io's TileStore keeps the group attributes it read at open and writes them back whole when it updates
-    its own keys, so the store has to be re-opened (open "r+", parent only) to keep this key."""
-    group = zarr.open_group(store=path, mode="r+", zarr_format=3)
-    group.attrs.update({INPUT_ATTRS_KEY: identity})
-    return tile_store.open(path, "r+")
+def _set_input_attrs(store, identity):
+    """Add attrs ``palyim_cropper`` (parent only; palyim-io merges it with the attrs on disk and keeps it through
+    its own later attrs writes). Written right after create, or on the first resume of a store without it."""
+    store.update_attrs(INPUT_ATTRS_KEY, identity)
 
 
 def _check_same_input(store, path, slide_metadata, identity, name):
     """Refuse to resume a store made from another input: other file name or size, or other recorded
-    width/height/planes/calibration. A store without the input attrs gets them (first resume). Returns the store
-    to use (re-opened if attrs were added)."""
+    width/height/planes/calibration. A store without the input attrs gets them (first resume)."""
     problems = []
     recorded_ome = store.slide_metadata().get("ome_metadata", {})
     current_ome = slide_metadata.get("ome_metadata", {})
     for key in OME_FIELDS:
         if recorded_ome.get(key) != current_ome.get(key):
             problems.append("ome_metadata.%s %r != %r" % (key, current_ome.get(key), recorded_ome.get(key)))
-    group = zarr.open_group(store=path, mode="r", zarr_format=3)
-    recorded = dict(group.attrs.get(INPUT_ATTRS_KEY) or {})
+    recorded = dict(store.attrs().get(INPUT_ATTRS_KEY) or {})
     if recorded:
         for key in ("input_file", "input_bytes"):
             if recorded.get(key) != identity[key]:
@@ -462,8 +455,7 @@ def _check_same_input(store, path, slide_metadata, identity, name):
                          "delete and recreate the store" % (path, "; ".join(problems)))
     if not recorded:
         logger.info("%s: recording the input file name and size in %s attrs", name, INPUT_ATTRS_KEY)
-        return _set_input_attrs(path, identity)
-    return store
+        _set_input_attrs(store, identity)
 
 
 def _open_or_create(path, tile_xy, z_planes, size, slide_metadata, overwrite, tiles_per_shard, name, identity):
@@ -473,7 +465,7 @@ def _open_or_create(path, tile_xy, z_planes, size, slide_metadata, overwrite, ti
         store = tile_store.create(path, tile_xy, z_planes, slide_metadata, tile_size=size,
                                   tiles_per_shard=tiles_per_shard, overwrite=overwrite)
         if identity is not None:
-            store = _set_input_attrs(path, identity)
+            _set_input_attrs(store, identity)
         return store
     store = tile_store.open(path, "r+")
     try:
@@ -481,7 +473,7 @@ def _open_or_create(path, tile_xy, z_planes, size, slide_metadata, overwrite, ti
     except ValueError as e:
         raise ValueError("%s; rerun with --overwrite to delete and recreate the store" % e)
     if identity is not None:
-        store = _check_same_input(store, path, slide_metadata, identity, name)
+        _check_same_input(store, path, slide_metadata, identity, name)
     if tiles_per_shard and int(tiles_per_shard) != store.tiles_per_shard:
         logger.warning("%s: resuming a store with %d tiles per shard; --store-tiles-per-shard %d is ignored",
                        name, store.tiles_per_shard, tiles_per_shard)

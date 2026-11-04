@@ -311,7 +311,9 @@ def test_resume_refuses_a_store_made_from_another_input(slide, tmp_path):
     assert zarr_run(slide, out).returncode == 0
     with open(os.path.join(store_path(out), "zarr.json")) as f:
         attrs = json.load(f)["attributes"]
+    # Written right after create; it survives palyim-io's later attrs writes (mark_complete ran after it).
     assert attrs["palyim_cropper"] == {"input_file": SLIDE_FILE, "input_bytes": os.path.getsize(slide)}
+    assert attrs["palyim_io"]["completed"] and attrs["palyim"]["percent_complete"] == 100.0
     before = progress(out)
 
     # Same file name, same size, same grid, other calibration (0.5 um/px instead of 0.25).
