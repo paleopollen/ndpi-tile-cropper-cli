@@ -10,9 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `--tile_format zarr`: one Zarr v3 tile store per slide (`<output_dir>/<slide>.zarr`, palyim-io tile store) instead
   of the PNG tree, with resume, missing-plane reruns and a non-zero exit status on failures. Options
-  `--zarr-writers` and `--zarr-tiles-per-shard`.
+  `--store-writers` and `--store-tiles-per-shard`.
 - Per-phase timings in the log at the end of every run, and `--timings-json`.
-- Tests (pytest, run inside the image) on a synthetic OME-TIFF: Zarr vs PNG pixels, resume, read failures.
+- Tests (pytest, run inside the image) on a synthetic ImageJ hyperstack TIFF: Zarr vs PNG pixels, resume, read
+  failures, signals, flag prefixes.
 
 ### Changed
 - Update Zenodo URL in the README.

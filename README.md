@@ -90,29 +90,42 @@ docker run -it --rm ndpi-tile-cropper-parallel --help
 images have it). PNG stays the default and its output is unchanged.
 
 - **Contents:** `tiles` (N, Z, T, T, 3) uint8 in the PNG mode's tile order, `tile_xy` (N, 2), `plane_present`
-  (N, Z), the attrs `palyim` holding exactly what PNG mode writes to `metadata.json`, and `progress.json`. The full
-  contract is in the palyim-io README. Tile `i` at `tile_xy[i] = (x, y)` holds the same pixels as the PNGs in
-  `{x}x_{y}y/`, plane by plane. Nothing is written under `<output_dir>/<slide>/`.
+  (N, Z), the attrs `palyim` holding exactly what PNG mode writes to `metadata.json`, the attrs `palyim_cropper`
+  (input file name and size), and `progress.json`. The full contract is in the palyim-io README. Tile `i` at
+  `tile_xy[i] = (x, y)` holds the same pixels as the PNGs in `{x}x_{y}y/`, plane by plane. Nothing is written under
+  `<output_dir>/<slide>/`.
+- **Progress:** attrs `palyim` are written when the store is created (`processed_tile_count` 0) and when it is
+  finished. While a store is incomplete, after an interruption for example, only `progress.json` (`shards_done`)
+  says how far it got; readers refuse incomplete stores.
 - **Files:** about one file per shard of k tiles (k = 4 for 9 planes at 2048 px), so roughly 940 files for a
   3,750-tile slide instead of about 34,000 PNGs and 3,750 folders.
-- **Rerun:** an unfinished store is resumed from its `progress.json`, after checking that it was made for the same
-  grid, planes and tile size; a store made with other settings is refused. `--overwrite` deletes the store and
-  starts over. A complete store is left alone.
+- **Rerun:** an unfinished store is resumed from its `progress.json`, after checking that it was made from the same
+  input: the same grid, planes and tile size, the same recorded width, height and calibration, and the same input
+  file name and size. A store made from another input or with other settings is refused (exit 1) with a pointer to
+  `--overwrite`, which deletes the store and starts over. A complete store is left alone.
 - **Read failures:** a plane that cannot be read is stored as zeros, marked False in `plane_present` and listed in
   `progress.json` (`missing_planes`). The store is still completed, but the run exits 1. Rerunning the same command
   re-reads only those planes.
 - **Exit status:** 0 when the store is complete with every plane present, 1 otherwise (read failures, a writer
-  error, an exception, or SIGINT/SIGTERM; a signal stops the run after the shards in flight are written), and 2
-  for `--zip`, which cannot be combined with `zarr`. PNG mode keeps its exit status.
+  error, an exception, or SIGINT/SIGTERM), and 2 for `--zip`, which cannot be combined with `zarr`. PNG mode keeps
+  its exit status (0, also after exceptions and signals).
+- **Signals:** SIGINT or SIGTERM, to this process or to its whole process group (Ctrl-C, `scancel`), stop the
+  reading; writer processes ignore both and finish the shard they hold, which is recorded before the run exits 1.
+  The rerun resumes. SIGKILL (the OOM killer, or `scancel` after its grace period) loses the shards in flight; they
+  are rewritten on resume.
 - **Processes and memory:** by default this process reads a shard (k tiles, all planes) into one buffer, then
-  compresses and writes it, using all its CPUs for the compression. With `--zarr-writers W` (W >= 1), W extra
+  compresses and writes it, using all its CPUs for the compression. With `--store-writers W` (W >= 1), W extra
   processes compress and write shards while this one reads the next. Reading is usually the bottleneck, so this
   gained 0-10% in local tests. The buffers are `writers + 1` blocks of shared memory in
   `/dev/shm`, one shard each (432 MiB for 9 planes at 2048 px, 504 MiB for 21 planes); each writer needs up to
   about 1 GB more while it compresses. **In Docker, pass `--shm-size`** (for example `--shm-size=2g` for one
   writer): if `/dev/shm` is too small (Docker's default is 64 MB) the run logs a warning and writes in the reading
-  process instead, as with the default `--zarr-writers 0` (no extra processes, one buffer). Codec threads per writer
+  process instead, as with the default `--store-writers 0` (no extra processes, one buffer). Codec threads per writer
   are taken from `SLURM_CPUS_PER_TASK` (or the CPU affinity), with one CPU left to the reader.
+- **Shared-memory leaks (writers only):** if the whole process group is SIGKILLed, its blocks stay in `/dev/shm` and
+  hold memory. They are named `palyim-crop-j<SLURM_JOB_ID>-p<pid>-b<i>`; every later run with writers on that node
+  removes the blocks of this user whose pid is no longer alive. To check by hand: `ls -l /dev/shm/palyim-crop-*`.
+  The default `--store-writers 0` uses no shared memory.
 - The parallel CLI (`ndpi_tile_cropper_parallel_cli.py`) does not pass `--tile_format` yet.
 
 Example:
@@ -131,8 +144,8 @@ mode stores them in the store's attrs as well.
 
 ```shell
 usage: python ndpi_tile_cropper_cli.py [-h] --input-file [INPUT_FILE] [--output-dir [OUTPUT_DIR]] [--tile_size TILE_SIZE] [--overwrite]
-                                [--tile_overlap TILE_OVERLAP] [--tile_format {png,zarr}] [--zarr-writers ZARR_WRITERS]
-                                [--zarr-tiles-per-shard ZARR_TILES_PER_SHARD] [--timings-json TIMINGS_JSON] [--zip]
+                                [--tile_overlap TILE_OVERLAP] [--tile_format {png,zarr}] [--store-writers STORE_WRITERS]
+                                [--store-tiles-per-shard STORE_TILES_PER_SHARD] [--timings-json TIMINGS_JSON] [--zip]
                                 [--log-level [{DEBUG,INFO,WARNING,ERROR,CRITICAL}]] [--verbose]
 
 Crop and generate tile images from an NDPI format image file.
@@ -152,12 +165,12 @@ optional arguments:
   --tile_format {png,zarr}
                         Format of the tiles. png (default): one PNG per focal plane under <output_dir>/<slide>/. zarr: one Zarr v3 tile
                         store <output_dir>/<slide>.zarr (needs palyim-io[zarr], Python >= 3.11); not combinable with --zip.
-  --zarr-writers ZARR_WRITERS
+  --store-writers STORE_WRITERS
                         Zarr mode: number of writer processes that compress and write shards while this process reads the next one
                         (default 0: write in this process). Each writer needs one more shard buffer in /dev/shm (~432 MiB for 9 planes
                         at 2048 px; pass --shm-size to Docker) plus up to ~1 GB while it writes. Reading is usually the bottleneck, so
                         writers gain little (0-10% in local tests).
-  --zarr-tiles-per-shard ZARR_TILES_PER_SHARD
+  --store-tiles-per-shard STORE_TILES_PER_SHARD
                         Zarr mode, for tests: tiles per shard when the store is created. Default: palyim-io's floor(512 MiB / (Z x tile
                         bytes)), e.g. 4 for 9 planes of 2048 px.
   --timings-json TIMINGS_JSON
@@ -229,7 +242,8 @@ pip install -r requirements.txt
 
 ### Tests
 
-The tests run the real CLI and Bio-Formats on a small synthetic OME-TIFF, in PNG and Zarr mode, inside the image:
+The tests run the real CLI and Bio-Formats on a small synthetic 3-plane TIFF (an ImageJ hyperstack written with
+tifffile), in PNG and Zarr mode, inside the image:
 
 ```shell
 docker build --platform linux/amd64 -t ndpi-tile-cropper .
