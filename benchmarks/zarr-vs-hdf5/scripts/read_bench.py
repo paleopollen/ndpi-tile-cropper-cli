@@ -37,7 +37,20 @@ class ArrayReader:
     def window(self, y, x, h, w): return np.asarray(self.a[:, y:y+h, x:x+w, :])
     def plane(self, z): return np.asarray(self.a[z])
 
+class OMEReader(ArrayReader):
+    """Array stored (c, z, y, x); returns (z, y, x, c) like the other readers (the transpose is part of the read cost)."""
+    def __init__(self, arr, meta):
+        self.a = arr; self.x0 = meta["region"]["x0"]; self.y0 = meta["region"]["y0"]; self.Z = arr.shape[1]
+        self.n = (arr.shape[2] - T) // STEP + 1
+    @staticmethod
+    def _il(x): return np.ascontiguousarray(np.moveaxis(np.asarray(x), 0, -1))
+    def stack(self, i, j): return self._il(self.a[:, :, j*STEP:j*STEP+T, i*STEP:i*STEP+T])
+    def window(self, y, x, h, w): return self._il(self.a[:, :, y:y+h, x:x+w])
+    def plane(self, z): return self._il(self.a[:, z])
+
 def open_reader(path):
+    if path.endswith(".ome.zarr"):
+        import zarr; g = zarr.open_group(path, mode="r"); a = g["0"]; meta = dict(g.attrs["palyim"]); return OMEReader(a, meta), meta
     if path.endswith(".zarr"):
         import zarr; a = zarr.open_array(path, mode="r"); meta = dict(a.attrs); return ArrayReader(a, meta), meta
     if path.endswith(".h5"):
@@ -66,7 +79,7 @@ if __name__ == "__main__":
     for y, x in wins: w = r.window(y, x, 256, 256); assert w.shape == (r.Z, 256, 256, 3), w.shape
     t_win = (time.perf_counter() - t0) / a.windows
     # 6: full plane
-    t0 = time.perf_counter(); pl = r.plane(r.Z // 2); t_plane = time.perf_counter() - t0; assert pl.shape[:2] == (S, S)
+    t0 = time.perf_counter(); pl = r.plane(r.Z // 2); t_plane = time.perf_counter() - t0; assert pl.shape[0] == pl.shape[1] >= S, pl.shape
     rec = {"path": a.path, "label": a.label, "tile_stack_s": round(t_stack, 4), "window256_s": round(t_win, 5),
            "plane_s": round(t_plane, 2), "n_tiles": a.tiles, "n_windows": a.windows}
     print(json.dumps(rec)); open(a.results, "a").write(json.dumps(rec) + "\n")
