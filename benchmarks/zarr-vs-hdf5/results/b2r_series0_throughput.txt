@@ -1,0 +1,1 @@
+b2r series0: first chunk after 10s; chunks written 1 -> 1183 in 176s => 6.72 chunk files/s with 4 workers; bytes=932M
