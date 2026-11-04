@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `--tile_format zarr`: one Zarr v3 tile store per slide (`<output_dir>/<slide>.zarr`, palyim-io tile store) instead
+  of the PNG tree, with resume, missing-plane reruns and a non-zero exit status on failures. Options
+  `--zarr-writers` and `--zarr-tiles-per-shard`.
+- Per-phase timings in the log at the end of every run, and `--timings-json`.
+- Tests (pytest, run inside the image) on a synthetic OME-TIFF: Zarr vs PNG pixels, resume, read failures.
+
 ### Changed
 - Update Zenodo URL in the README.
+- Docker images on `python:3.12-slim-bookworm` with numpy 1.26.4, pinned through `constraints.txt`, plus
+  palyim-io[zarr] from a local wheel. PNG output is unchanged.
 
 ### Fixed
 - Build error due to base image changing. [#81](https://github.com/paleopollen/palyim-issues/issues/81)
