@@ -94,7 +94,7 @@ class NDPITileCropperCLI(object):
                  'zarr: one Zarr v3 tile store <output_dir>/<slide>.zarr (needs palyim-io[zarr], Python >= 3.11); '
                  'not combinable with --zip.')
         parser.add_argument(
-            '--zarr-writers',
+            '--store-writers',
             type=int,
             default=0,
             help='Zarr mode: number of writer processes that compress and write shards while this process reads '
@@ -102,7 +102,7 @@ class NDPITileCropperCLI(object):
                  '/dev/shm (~432 MiB for 9 planes at 2048 px; pass --shm-size to Docker) plus up to ~1 GB while '
                  'it writes. Reading is usually the bottleneck, so writers gain little (0-10%% in local tests).')
         parser.add_argument(
-            '--zarr-tiles-per-shard',
+            '--store-tiles-per-shard',
             type=int,
             default=None,
             help='Zarr mode, for tests: tiles per shard when the store is created. Default: palyim-io\'s '
@@ -320,7 +320,7 @@ class NDPIFileCropper:
             result = zarr_mode.crop_to_store(
                 reader, store_path, start_xy_list, self.metadata['z_plane'], width, slide_metadata,
                 overwrite=self.overwrite_flag, writers=writers, tiles_per_shard=tiles_per_shard, timer=timer,
-                name=self.input_filename)
+                name=self.input_filename, input_path=self.input_file_path)
         finally:
             reader.close()
         self.processed_tile_count = result.processed_tile_count
@@ -523,7 +523,7 @@ if __name__ == '__main__':
         # Crop tiles from the NDPISlide
         if cli.args.tile_format == 'zarr':
             with timer.phase("crop_tiles"):
-                failed_planes = ndpi_file_cropper.crop_tiles_zarr(cli.args.zarr_writers, cli.args.zarr_tiles_per_shard,
+                failed_planes = ndpi_file_cropper.crop_tiles_zarr(cli.args.store_writers, cli.args.store_tiles_per_shard,
                                                                   timer)
             if failed_planes:
                 exit_code = 1

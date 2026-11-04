@@ -45,12 +45,25 @@ Failures: a plane whose read raises or returns the wrong number of bytes is stor
 Rerunning the same command re-reads only those planes and rewrites their shards (the other planes of the
 shard come from the store via ``read_shard``). A write error or a signal stops the run after the shards in
 flight are recorded; the store stays incomplete and a rerun resumes from ``progress.json``.
+
+Signals: SIGINT and SIGTERM to the parent stop the reading; writers ignore both, finish the shard they hold and
+are shut down by the parent (or exit on their own if the parent dies), so a SIGTERM to the whole process group
+(scancel) loses no shard in flight. SIGKILL of the whole group cannot be handled: the shards in flight are lost
+(rewritten on resume), and the shared-memory blocks stay in /dev/shm. Blocks are named
+``palyim-crop-j<SLURM_JOB_ID>-p<pid>-b<i>``; every run with writers first removes this user's blocks whose pid is
+no longer alive, so a leak lasts until the next Zarr run with writers on that node (or a reboot). Run
+``ls /dev/shm/palyim-crop-*`` to see them. The default ``writers=0`` uses no shared memory.
+
+Attrs ``palyim`` are written at create (progress 0) and at finish only; while a store is incomplete, only
+``progress.json`` tracks progress. Attrs ``palyim_cropper`` record the input file's name and size, and a resumed
+run refuses a store made from another input (name, size, or the recorded width, height, planes, calibration).
 """
 
 import logging
 import multiprocessing
 import os
 import signal
+import re
 import threading
 import time
 from collections import namedtuple
@@ -60,6 +73,7 @@ from multiprocessing import shared_memory
 import numpy as np
 
 import palyim_io
+import zarr
 from palyim_io import tile_store
 
 logger = logging.getLogger("ndpi_tile_cropper_cli.py")
@@ -99,10 +113,15 @@ def codec_threads(writers, cpus):
 
 # -- writer processes (module-level functions so spawn can pickle them by name) -------------------------------
 def _init_writer(threads):
-    # Ctrl-C reaches the whole process group; the parent handles it (stops reading, waits for the shards in
-    # flight, records them), so a writer finishes its shard. SIGTERM keeps its default: the executor itself
-    # uses it to stop broken workers, and a writer killed mid-write leaves only a stray *.partial file.
+    # Ctrl-C and scancel's SIGTERM reach the whole process group. The parent handles them (stops reading, waits
+    # for the shards in flight, records them, shuts the pool down), so a writer ignores both and finishes its
+    # shard. It still exits if the parent dies (below), and _ShardWriters.close() kills the writers with SIGKILL
+    # when the pool broke, because the executor's own SIGTERM would be ignored.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    # The parent spawned this process with both signals blocked (see _ShardWriters.submit), so a signal that
+    # arrived while it was starting up is pending; now that both are ignored, unblocking discards it.
+    signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT, signal.SIGTERM})
     _exit_with_parent()
     palyim_io.configure_worker(threads=threads)
 
@@ -154,6 +173,54 @@ def patch_shard_task(path, shard_index, patches):
     return receipt, time.perf_counter() - t0
 
 
+SHM_DIR = "/dev/shm"
+SHM_PREFIX = "palyim-crop-"
+_SHM_NAME = re.compile(r"^palyim-crop-j[^-]*-p(\d+)-b\d+$")
+
+
+def shm_block_name(index):
+    """``palyim-crop-j<SLURM_JOB_ID or none>-p<pid>-b<index>``: identifiable in /dev/shm and tied to its owner."""
+    job = re.sub(r"[^0-9A-Za-z_]", "", os.environ.get("SLURM_JOB_ID", "")) or "none"
+    return "%sj%s-p%d-b%d" % (SHM_PREFIX, job, os.getpid(), index)
+
+
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def remove_stale_shm_blocks(name=""):
+    """Unlink this user's palyim-crop-* blocks in /dev/shm whose owning pid is gone (left by a run whose whole
+    process group was SIGKILLed). Returns the names removed."""
+    removed = []
+    try:
+        entries = os.listdir(SHM_DIR)
+    except OSError:
+        return removed
+    uid = os.getuid()
+    for entry in entries:
+        m = _SHM_NAME.match(entry)
+        if not m:
+            continue
+        path = os.path.join(SHM_DIR, entry)
+        try:
+            if os.stat(path).st_uid != uid or _pid_alive(int(m.group(1))):
+                continue
+            os.unlink(path)
+            removed.append(entry)
+        except OSError:
+            continue
+    if removed:
+        logger.warning("%s: removed %d stale shared-memory blocks from an earlier killed run: %s", name, len(removed),
+                       ", ".join(sorted(removed)))
+    return removed
+
+
 def shm_free_bytes():
     try:
         st = os.statvfs("/dev/shm")
@@ -182,8 +249,9 @@ class _ShardWriters(object):
         self._free = []
         if self.writers > 0:
             nbytes = int(np.prod(self._shape))
-            for _ in range(self.writers + 1):
-                self._blocks.append(shared_memory.SharedMemory(create=True, size=max(1, nbytes)))
+            for i in range(self.writers + 1):
+                self._blocks.append(shared_memory.SharedMemory(name=shm_block_name(i), create=True,
+                                                               size=max(1, nbytes)))
             self._free = list(range(len(self._blocks)))
             ctx = multiprocessing.get_context("spawn")
             self._executor = ProcessPoolExecutor(max_workers=self.writers, mp_context=ctx,
@@ -231,12 +299,19 @@ class _ShardWriters(object):
         if self.failed:
             self.release(block)
             return
+        # The executor spawns writers lazily inside submit(). Block SIGINT/SIGTERM in this thread meanwhile: a
+        # spawned child inherits the blocked mask across fork and exec, so a group signal (Ctrl-C, scancel) that
+        # arrives before its initializer has set SIG_IGN stays pending instead of killing it. Here the signals
+        # stay pending too and reach _StopOnSignal right after.
+        old_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM})
         try:
             future = self._executor.submit(fn, self.store.path, shard, payload)
         except Exception as e:  # noqa: BLE001 - e.g. BrokenProcessPool after a writer was killed
+            signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
             self.release(block)
             self._fail(shard, e)
             return
+        signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
         self._inflight[future] = (shard, mask, block)
 
     def _wait_one(self):
@@ -258,6 +333,14 @@ class _ShardWriters(object):
 
     def close(self):
         if self._executor is not None:
+            if self.failed:
+                # A broken pool (e.g. a writer was OOM-killed): the executor stops the other workers with SIGTERM,
+                # which writers ignore, so kill them before waiting for the shutdown.
+                for proc in list(getattr(self._executor, "_processes", {}).values()):
+                    try:
+                        proc.kill()
+                    except Exception:  # noqa: BLE001 - already gone
+                        pass
             self._executor.shutdown(wait=True, cancel_futures=True)
             self._executor = None
         for block in self._blocks:
@@ -301,7 +384,8 @@ class _StopOnSignal(object):
 
     def _handle(self, signum, frame):
         if self.signum is None:
-            logger.warning("Received signal %d: finishing the shards in flight, then stopping", signum)
+            logger.warning("Received signal %d: finishing the shards in flight (writers ignore the signal), then "
+                           "stopping", signum)
         self.signum = signum
 
 
@@ -337,19 +421,69 @@ def _read_shard(reader, stack, tile_xy, start, stop, z_planes, size, stopper, ti
     return mask
 
 
-def _open_or_create(path, tile_xy, z_planes, size, slide_metadata, overwrite, tiles_per_shard, name):
+INPUT_ATTRS_KEY = "palyim_cropper"
+# ome_metadata fields that must match the current input for a resume (the grid check covers tile size/overlap).
+OME_FIELDS = ("width", "height", "z_plane", "calibration", "calibration_unit")
+
+
+def input_identity(input_path):
+    """What attrs ``palyim_cropper`` record about the input: file name and size in bytes."""
+    return {"input_file": os.path.basename(input_path), "input_bytes": int(os.path.getsize(input_path))}
+
+
+def _set_input_attrs(path, identity):
+    """Add attrs ``palyim_cropper`` and return the store re-opened. The parent's own key beside palyim-io's two,
+    written right after create (or on the first resume of a store without it), before any worker starts.
+    palyim-io's TileStore keeps the group attributes it read at open and writes them back whole when it updates
+    its own keys, so the store has to be re-opened (open "r+", parent only) to keep this key."""
+    group = zarr.open_group(store=path, mode="r+", zarr_format=3)
+    group.attrs.update({INPUT_ATTRS_KEY: identity})
+    return tile_store.open(path, "r+")
+
+
+def _check_same_input(store, path, slide_metadata, identity, name):
+    """Refuse to resume a store made from another input: other file name or size, or other recorded
+    width/height/planes/calibration. A store without the input attrs gets them (first resume). Returns the store
+    to use (re-opened if attrs were added)."""
+    problems = []
+    recorded_ome = store.slide_metadata().get("ome_metadata", {})
+    current_ome = slide_metadata.get("ome_metadata", {})
+    for key in OME_FIELDS:
+        if recorded_ome.get(key) != current_ome.get(key):
+            problems.append("ome_metadata.%s %r != %r" % (key, current_ome.get(key), recorded_ome.get(key)))
+    group = zarr.open_group(store=path, mode="r", zarr_format=3)
+    recorded = dict(group.attrs.get(INPUT_ATTRS_KEY) or {})
+    if recorded:
+        for key in ("input_file", "input_bytes"):
+            if recorded.get(key) != identity[key]:
+                problems.append("%s %r != %r" % (key, identity[key], recorded.get(key)))
+    if problems:
+        raise ValueError("%s was made from another input (current vs recorded: %s); rerun with --overwrite to "
+                         "delete and recreate the store" % (path, "; ".join(problems)))
+    if not recorded:
+        logger.info("%s: recording the input file name and size in %s attrs", name, INPUT_ATTRS_KEY)
+        return _set_input_attrs(path, identity)
+    return store
+
+
+def _open_or_create(path, tile_xy, z_planes, size, slide_metadata, overwrite, tiles_per_shard, name, identity):
     if overwrite or not os.path.lexists(path):
         if overwrite and os.path.lexists(path):
             logger.info("%s: --overwrite: deleting and recreating %s", name, path)
-        return tile_store.create(path, tile_xy, z_planes, slide_metadata, tile_size=size,
-                                 tiles_per_shard=tiles_per_shard, overwrite=overwrite)
+        store = tile_store.create(path, tile_xy, z_planes, slide_metadata, tile_size=size,
+                                  tiles_per_shard=tiles_per_shard, overwrite=overwrite)
+        if identity is not None:
+            store = _set_input_attrs(path, identity)
+        return store
     store = tile_store.open(path, "r+")
     try:
         store.validate(tile_xy, z_planes, size)
     except ValueError as e:
         raise ValueError("%s; rerun with --overwrite to delete and recreate the store" % e)
+    if identity is not None:
+        store = _check_same_input(store, path, slide_metadata, identity, name)
     if tiles_per_shard and int(tiles_per_shard) != store.tiles_per_shard:
-        logger.warning("%s: resuming a store with %d tiles per shard; --zarr-tiles-per-shard %d is ignored",
+        logger.warning("%s: resuming a store with %d tiles per shard; --store-tiles-per-shard %d is ignored",
                        name, store.tiles_per_shard, tiles_per_shard)
     if store.removed_partials:
         logger.info("%s: removed %d stray partial files from an earlier run", name, len(store.removed_partials))
@@ -359,13 +493,15 @@ def _open_or_create(path, tile_xy, z_planes, size, slide_metadata, overwrite, ti
 
 
 def crop_to_store(reader, path, tile_xy, z_planes, tile_size, slide_metadata, overwrite=False, writers=0,
-                  tiles_per_shard=None, timer=None, name=""):
+                  tiles_per_shard=None, timer=None, name="", input_path=None):
     """Fill the tile store at ``path`` from an open Bio-Formats ``reader`` (the parent's; it stays open).
 
     ``tile_xy``: the cropper's grid as a list of (x, y) Python ints, in order. ``slide_metadata``: the dict
     PNG mode writes to metadata.json (attrs ``palyim``); at finish ``processed_tile_count`` and
     ``percent_complete`` are updated the way ``write_metadata_before_exiting`` updates metadata.json.
-    Raises CropInterrupted or ShardWriteError if the store could not be finished.
+    ``input_path``: the slide file; its name and size go to attrs ``palyim_cropper`` and are checked on resume.
+    Raises CropInterrupted or ShardWriteError if the store could not be finished, ValueError if an existing store
+    does not match the input.
     """
     if timer is None:
         from utils.palyim_timing import PhaseTimer
@@ -373,7 +509,9 @@ def crop_to_store(reader, path, tile_xy, z_planes, tile_size, slide_metadata, ov
     size = int(tile_size)
     z_planes = int(z_planes)
     with timer.phase("open_store"):
-        store = _open_or_create(path, tile_xy, z_planes, size, slide_metadata, overwrite, tiles_per_shard, name)
+        identity = input_identity(input_path) if input_path else None
+        store = _open_or_create(path, tile_xy, z_planes, size, slide_metadata, overwrite, tiles_per_shard, name,
+                                identity)
     n = store.n_tiles
 
     pending = store.pending_shards()
@@ -389,11 +527,12 @@ def crop_to_store(reader, path, tile_xy, z_planes, tile_size, slide_metadata, ov
     writers = max(0, int(writers))
     shard_shape = (store.tiles_per_shard, z_planes, size, size, 3)
     if writers:
+        remove_stale_shm_blocks(name)  # before measuring: leaked blocks are what fills /dev/shm
         need = (writers + 1) * int(np.prod(shard_shape))
         free = shm_free_bytes()
         if free < need + 16 * 1024 * 1024:
             logger.warning("%s: /dev/shm has %d MiB free, %d writer(s) need %d MiB of shard buffers: writing in "
-                           "this process instead (--zarr-writers 0). In Docker, pass --shm-size.", name,
+                           "this process instead (--store-writers 0). In Docker, pass --shm-size.", name,
                            free // 2 ** 20, writers, need // 2 ** 20)
             writers = 0
     cpus = available_cpus()
