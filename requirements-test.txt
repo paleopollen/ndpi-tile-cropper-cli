@@ -1,0 +1,6 @@
+# Test-only packages, installed by test.Dockerfile on top of the cropper image (never in the cropper image).
+pytest==8.3.5
+tifffile==2024.8.30
+# their dependencies, as resolved on 2026-11-04
+iniconfig==2.3.1
+pluggy==1.7.0
