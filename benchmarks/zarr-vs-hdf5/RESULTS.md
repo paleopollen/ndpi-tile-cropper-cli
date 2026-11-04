@@ -136,3 +136,36 @@ a table of (tile key, bbox, segment id), sharded along N. The tile result transf
 sharding and read patterns carry over; the shape does not. Proposal: prototype `--tile_format zarr` in the cropper
 (optional, additive), teach stage ② to read it, then design the segment container with what we learn.
 
+## Addendum (2026-11-04): adopting the OME-Zarr axis convention
+
+Question: what changes if the store follows OME-NGFF conventions, i.e. a group with the full-resolution array at `0`,
+axes `c z y x` (channel first, planar RGB) instead of our `z y x c` (interleaved RGB)? Two variants were written
+with the same codec, the same bytes per chunk and the same per-plane shard geometry as C-z, plus `multiscales`
+metadata (NGFF 0.5 form; 0.6, released 2026-09, keeps the same storage and adds coordinate systems):
+
+- `ome-czyx`: array (3, Z, Y, X), chunk (3, 1, 2048, 2048), shard (3, 1, 16384, 16384).
+- `ome-czyx-c1`: same, chunk (1, 1, 2048, 2048), the usual OME one-channel chunk.
+
+Both pay a transpose on write (Bio-Formats delivers interleaved RGB) and on read (stage ② needs interleaved RGB
+for PIL and SAM); those transposes are inside the measured times. Reads were re-run on C-z in the same session.
+
+| Layout | files | GB | encode 1w | encode 4w | tile stack read | 256² window ×Z | full plane |
+|---|---|---|---|---|---|---|---|
+| C-z `zyxc` interleaved (recommended) | 10 | 1.35 | 44 s | 27 s | 0.062 s | 27 ms | 0.66 s |
+| `czyx` planar, chunk (3,1,2048,2048) | 11 | 1.86 | 70 s | 65 s | 0.207 s | 38 ms | 1.88 s |
+| `czyx` planar, chunk (1,1,2048,2048) | 11 | 1.86 | 61 s | – | 0.213 s | 35 ms | 1.98 s |
+
+- **Files:** the same, plus one `zarr.json` for the group.
+- **Bytes: +38 percent.** Blosc shuffle is a no-op for uint8, so both layouts are plain zstd-3 on bytes; interleaved
+  RGB compresses better because the three correlated channel values of a pixel sit next to each other and brightfield
+  backgrounds become repeating 3-byte patterns, while planar storage puts them 4 MB apart.
+- **Write: 1.4 to 1.6× slower**, and the 4-worker run barely gained (the transpose doubles each worker's 0.8 GB
+  block, which pushed this 16 GB laptop into memory pressure; on a Delta node it would scale).
+- **Read: 3.3× slower for a tile z-stack, 3× for a plane, 1.3× for small windows.** Each (z, tile) is one chunk in
+  C-z but three chunks plus a transpose in the planar layout.
+
+So: adopt the OME *container* conventions (group, `0`, `multiscales`, axis names and units, a translation to slide
+coordinates) but keep the pixel layout interleaved, declaring axes `z y x c` with `c` typed `channel`. NGFF allows
+any axis order as long as the axes are declared, so the store stays valid OME-Zarr for readers that honour the axes
+metadata; viewers that assume `c` first would need to be checked. If a tool insists on planar `czyx`, the price is
+the table above.

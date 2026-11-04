@@ -4,3 +4,6 @@
 {"path": "/Users/rmp6/Documents/palyim/zarr-benchmark/data/region/out/zarr-c-lz4_w1.zarr", "label": "warm", "tile_stack_s": 0.0611, "window256_s": 0.02151, "plane_s": 1.07, "n_tiles": 50, "n_windows": 1000}
 {"path": "/Users/rmp6/Documents/palyim/zarr-benchmark/data/region/out/zarr-c-z_w1.zarr", "label": "warm", "tile_stack_s": 0.0669, "window256_s": 0.02811, "plane_s": 0.68, "n_tiles": 50, "n_windows": 1000}
 {"path": "/Users/rmp6/Documents/palyim/zarr-benchmark/data/region/out/hdf5_w1.h5", "label": "warm", "tile_stack_s": 0.2854, "window256_s": 0.10887, "plane_s": 0.86, "n_tiles": 50, "n_windows": 1000}
+{"path": "/Users/rmp6/Documents/palyim/zarr-benchmark/data/region/out/ome-czyx_w1.ome.zarr", "label": "warm-ome-session", "tile_stack_s": 0.207, "window256_s": 0.03756, "plane_s": 1.88, "n_tiles": 50, "n_windows": 1000}
+{"path": "/Users/rmp6/Documents/palyim/zarr-benchmark/data/region/out/ome-czyx-c1_w1.ome.zarr", "label": "warm-ome-session", "tile_stack_s": 0.2127, "window256_s": 0.0348, "plane_s": 1.98, "n_tiles": 50, "n_windows": 1000}
+{"path": "/Users/rmp6/Documents/palyim/zarr-benchmark/data/region/out/zarr-c-z_w1.zarr", "label": "warm-ome-session", "tile_stack_s": 0.0618, "window256_s": 0.02716, "plane_s": 0.66, "n_tiles": 50, "n_windows": 1000}

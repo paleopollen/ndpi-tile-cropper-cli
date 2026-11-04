@@ -119,12 +119,43 @@ def write_hdf5(raw, out, x0, y0, workers, meta):
                     ds[z, j*T:(j+1)*T, i*T:(i+1)*T, :] = a[z, j*T:(j+1)*T, i*T:(i+1)*T, :]
     return {"chunks": (1, T, T, 3), "codec": "blosc-zstd-3-shuffle"}
 
+# ---------- OME-Zarr layout (NGFF 0.5 conventions: group with array "0", axes c z y x) ----------
+def ome_block(args):
+    raw, out, z, y0, y1, x0, x1 = args
+    import zarr
+    a = _open(raw); arr = zarr.open_array(os.path.join(out, "0"), mode="r+")
+    block = np.ascontiguousarray(np.moveaxis(a[z, y0:y1, x0:x1, :], -1, 0))[:, None]   # (3,1,h,w): interleaved -> planar
+    arr[:, z:z+1, y0:y1, x0:x1] = block
+    return 1
+
+def write_ome(raw, out, x0, y0, workers, meta, variant, czs=8):
+    import zarr
+    a = _open(raw); Z, S = a.shape[0], a.shape[1]
+    chunks = (3, 1, T, T) if variant == "ome-czyx" else (1, 1, T, T)
+    shards = (3, 1, czs*T, czs*T)
+    root = zarr.create_group(store=out, zarr_format=3, overwrite=True)
+    arr = root.create_array("0", shape=(3, Z, S, S), chunks=chunks, shards=shards, dtype="uint8",
+                            compressors=zarr_codec("zstd"), fill_value=0, dimension_names=("c", "z", "y", "x"))
+    cal = meta["ome_metadata"]["calibration"]
+    root.attrs["ome"] = {"version": "0.5", "multiscales": [{
+        "name": meta["source"],
+        "axes": [{"name": "c", "type": "channel"}, {"name": "z", "type": "space", "unit": "micrometer"},
+                 {"name": "y", "type": "space", "unit": "micrometer"}, {"name": "x", "type": "space", "unit": "micrometer"}],
+        "datasets": [{"path": "0", "coordinateTransformations": [{"type": "scale", "scale": [1.0, 1.0, cal, cal]}]}]}]}
+    root.attrs["palyim"] = meta
+    blocks = [(raw, out, z, j*czs*T, (j+1)*czs*T, i*czs*T, (i+1)*czs*T) for z in range(Z) for j in range(S//(czs*T)) for i in range(S//(czs*T))]
+    if workers == 1:
+        for b in blocks: ome_block(b)
+    else:
+        with ProcessPoolExecutor(workers) as ex: list(ex.map(ome_block, blocks))
+    return {"chunks": chunks, "shards": shards, "codec": "blosc-zstd-3-shuffle", "blocks": len(blocks), "layout": "czyx planar"}
+
 WRITERS = {"png": write_png, "png-zip": write_png_zip, "hdf5": write_hdf5}
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--raw", required=True); p.add_argument("--outdir", required=True)
-    p.add_argument("--format", required=True, choices=["png", "png-zip", "zarr-b", "zarr-c", "zarr-c-lz4", "zarr-c-z", "hdf5"])
+    p.add_argument("--format", required=True, choices=["png", "png-zip", "zarr-b", "zarr-c", "zarr-c-lz4", "zarr-c-z", "hdf5", "ome-czyx", "ome-czyx-c1"])
     p.add_argument("--workers", type=int, default=1)
     p.add_argument("--x0", type=int, required=True); p.add_argument("--y0", type=int, required=True)
     p.add_argument("--results", required=True, help="jsonl file to append to")
@@ -136,12 +167,13 @@ if __name__ == "__main__":
     meta = {"tile_size": T, "tile_overlap": T - STEP, "region": {"x0": a.x0, "y0": a.y0, "size": S},
             "ome_metadata": {"width": 134912, "height": 90624, "z_plane": Z, "calibration": 0.22507314877335133, "calibration_unit": "µm"},
             "axes": "zyxc", "storage_grid": T, "source": "PAL1999_B2_sample103_slide1"}
-    ext = {"png": "", "png-zip": ".zip", "hdf5": ".h5"}.get(a.format, ".zarr")
+    ext = {"png": "", "png-zip": ".zip", "hdf5": ".h5"}.get(a.format, ".ome.zarr" if a.format.startswith("ome") else ".zarr")
     out = os.path.join(a.outdir, f"{a.format}_w{a.workers}{ext}")
     if os.path.exists(out): shutil.rmtree(out) if os.path.isdir(out) else os.remove(out)
     os.makedirs(a.outdir, exist_ok=True)
     t0 = time.perf_counter()
     if a.format.startswith("zarr"): info = write_zarr(a.raw, out, a.x0, a.y0, a.workers, meta, a.format, a.c_shard, a.cz_shard)
+    elif a.format.startswith("ome"): info = write_ome(a.raw, out, a.x0, a.y0, a.workers, meta, a.format, a.cz_shard)
     else: info = WRITERS[a.format](a.raw, out, a.x0, a.y0, a.workers, meta)
     wall = time.perf_counter() - t0
     rss_self = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss; rss_child = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
