@@ -1,22 +1,24 @@
-"""--tile_format zarr against PNG mode, through the real Bio-Formats path on a synthetic OME-TIFF."""
+"""--tile_format zarr against PNG mode, through the real Bio-Formats path on a synthetic ImageJ hyperstack TIFF."""
 import filecmp
 import inspect
 import json
 import os
+import shutil
+import signal
 import sys
 
 import numpy as np
 import pytest
 
-from conftest import (GRID, K, OVERLAP, SLIDE, SRC, TILE, TILE_ARGS, Z, expected_tile, make_pixels, read_log,
-                      run_cli)
+from conftest import (GRID, K, OVERLAP, SLIDE, SLIDE_FILE, SRC, TILE, TILE_ARGS, Z, expected_tile, make_pixels,
+                      read_log, run_cli, start_cli_in_new_session, wait_for_reads, write_slide)
 
 palyim_io = pytest.importorskip("palyim_io")
 from palyim_io import layout, tile_store  # noqa: E402
 
 N = len(GRID)
 SHARDS = layout.shard_count(N, K)
-ZARR_ARGS = ["--tile_format", "zarr", "--zarr-tiles-per-shard", str(K)] + TILE_ARGS
+ZARR_ARGS = ["--tile_format", "zarr", "--store-tiles-per-shard", str(K)] + TILE_ARGS
 
 
 def zarr_run(slide, out, extra=(), env_extra=None, use_driver=False):
@@ -114,7 +116,7 @@ def test_png_mode_identical_to_base_commit(slide, png_reference, tmp_path):
 # -- Zarr mode --------------------------------------------------------------------------------------------------
 @pytest.mark.parametrize("writers", [0, 1, 2])
 def test_zarr_equals_png(slide, png_reference, tmp_path, writers):
-    proc = zarr_run(slide, tmp_path, ["--zarr-writers", str(writers)])
+    proc = zarr_run(slide, tmp_path, ["--store-writers", str(writers)])
     assert proc.returncode == 0, proc.stdout
     # The writer processes really ran (the tiny shards fit Docker's 64 MB /dev/shm; no fallback to in-process).
     assert "%d writer process(es)" % writers in proc.stdout
@@ -159,7 +161,7 @@ def test_complete_store_rerun_reads_nothing(slide, tmp_path):
 def test_signal_stops_cleanly_and_rerun_resumes(slide, png_reference, tmp_path, signame):
     # Signal after 2.5 shards' worth of reads: shards 0 and 1 are handed to the writers, shard 2 is dropped.
     after = int(2.5 * K * Z)
-    proc = zarr_run(slide, tmp_path, ["--zarr-writers", "1"], use_driver=True,
+    proc = zarr_run(slide, tmp_path, ["--store-writers", "1"], use_driver=True,
                     env_extra={"INJECT_SIGNAL_AFTER": "%d:%s" % (after, signame)})
     assert proc.returncode == 1, proc.stdout
     assert "rerun to resume" in proc.stdout
@@ -169,7 +171,7 @@ def test_signal_stops_cleanly_and_rerun_resumes(slide, png_reference, tmp_path, 
         tile_store.open(store_path(tmp_path))
 
     log = str(tmp_path / "reads.log")
-    proc = zarr_run(slide, tmp_path, ["--zarr-writers", "2"], env_extra={"INJECT_LOG": log}, use_driver=True)
+    proc = zarr_run(slide, tmp_path, ["--store-writers", "2"], env_extra={"INJECT_LOG": log}, use_driver=True)
     assert proc.returncode == 0, proc.stdout
     # Only the pending shards were read: tiles 2K..N-1, every plane.
     expected = sorted((z, x, y) for i, (x, y) in enumerate(GRID) if i >= 2 * K for z in range(Z))
@@ -180,7 +182,7 @@ def test_signal_stops_cleanly_and_rerun_resumes(slide, png_reference, tmp_path, 
 def test_killed_run_resumes(slide, png_reference, tmp_path):
     """SIGKILL of the parent (node failure, OOM kill): no cleanup at all; the rerun resumes from progress.json."""
     after = int(3.5 * K * Z)
-    proc = zarr_run(slide, tmp_path, ["--zarr-writers", "2"], use_driver=True,
+    proc = zarr_run(slide, tmp_path, ["--store-writers", "2"], use_driver=True,
                     env_extra={"INJECT_SIGNAL_AFTER": "%d:SIGKILL" % after})
     assert proc.returncode == -9, proc.stdout
     p = progress(tmp_path)
@@ -197,7 +199,7 @@ def test_failed_planes_are_zeros_exit_1_and_rerun_rereads_only_them(slide, png_r
     bad_tile, bad_z = 13, 2  # shard 3
     fx, fy = GRID[fail_tile]
     bx, by = GRID[bad_tile]
-    proc = zarr_run(slide, tmp_path, ["--zarr-writers", "2"], use_driver=True,
+    proc = zarr_run(slide, tmp_path, ["--store-writers", "2"], use_driver=True,
                     env_extra={"INJECT_FAIL": "%d:%d:%d" % (fail_z, fx, fy),
                                "INJECT_MALFORMED": "%d:%d:%d" % (bad_z, bx, by)})
     assert proc.returncode == 1, proc.stdout
@@ -214,7 +216,7 @@ def test_failed_planes_are_zeros_exit_1_and_rerun_rereads_only_them(slide, png_r
     assert store.io_attrs()["missing_plane_count"] == 2
 
     log = str(tmp_path / "reads.log")
-    proc = zarr_run(slide, tmp_path, ["--zarr-writers", "1"], env_extra={"INJECT_LOG": log}, use_driver=True)
+    proc = zarr_run(slide, tmp_path, ["--store-writers", "1"], env_extra={"INJECT_LOG": log}, use_driver=True)
     assert proc.returncode == 0, proc.stdout
     assert sorted(read_log(log)) == sorted([(fail_z, fx, fy), (bad_z, bx, by)])
     store = tile_store.open(store_path(tmp_path))
@@ -225,8 +227,8 @@ def test_failed_planes_are_zeros_exit_1_and_rerun_rereads_only_them(slide, png_r
 def test_failed_plane_that_fails_again_stays_missing(slide, tmp_path):
     x, y = GRID[9]
     env = {"INJECT_FAIL": "0:%d:%d" % (x, y)}
-    assert zarr_run(slide, tmp_path, ["--zarr-writers", "0"], env_extra=env, use_driver=True).returncode == 1
-    proc = zarr_run(slide, tmp_path, ["--zarr-writers", "0"], env_extra=env, use_driver=True)
+    assert zarr_run(slide, tmp_path, ["--store-writers", "0"], env_extra=env, use_driver=True).returncode == 1
+    proc = zarr_run(slide, tmp_path, ["--store-writers", "0"], env_extra=env, use_driver=True)
     assert proc.returncode == 1, proc.stdout
     store = tile_store.open(store_path(tmp_path))
     assert store.missing_planes() == {9: [0]}
@@ -260,3 +262,72 @@ def test_overwrite_deletes_and_recreates(slide, png_reference, tmp_path):
     assert store.io_attrs()["created"] != created
     assert_matches_png(store, png_reference)
 
+
+
+def shm_blocks():
+    return sorted(e for e in os.listdir("/dev/shm") if e.startswith("palyim-crop-"))
+
+
+def test_group_sigterm_loses_no_shard_in_flight(slide, png_reference, tmp_path):
+    """scancel-style SIGTERM to the whole process group: writers ignore it and finish their shards, the parent
+    records them and exits 1; no write fails. The rerun completes the store."""
+    log = str(tmp_path / "reads.log")
+    proc = start_cli_in_new_session(["-i", slide, "-o", str(tmp_path)] + ZARR_ARGS + ["--store-writers", "2"],
+                                    str(tmp_path / "run1.log"), env_extra={"INJECT_LOG": log})
+    wait_for_reads(log, int(2.5 * K * Z), proc)
+    os.killpg(proc.pid, signal.SIGTERM)
+    assert proc.wait(timeout=600) == 1
+    out = open(str(tmp_path / "run1.log")).read()
+    assert "rerun to resume" in out and "writing shard" not in out, out
+    p = progress(tmp_path)
+    assert p["complete"] is False and len(p["shards_done"]) >= 2
+    assert out.count("recorded (") == len(p["shards_done"])
+    assert shm_blocks() == []  # the parent unlinked its blocks
+    assert zarr_run(slide, tmp_path, ["--store-writers", "2"]).returncode == 0
+    assert_matches_png(tile_store.open(store_path(tmp_path)), png_reference)
+
+
+def test_group_sigkill_leaks_shm_blocks_and_the_next_run_removes_them(slide, png_reference, tmp_path):
+    """SIGKILL of the whole group (OOM killer, node cleanup) cannot be handled: the /dev/shm blocks stay. They are
+    named palyim-crop-j<job>-p<pid>-b<i>, and the next run with writers removes those whose pid is dead."""
+    assert shm_blocks() == []
+    log = str(tmp_path / "reads.log")
+    proc = start_cli_in_new_session(["-i", slide, "-o", str(tmp_path)] + ZARR_ARGS + ["--store-writers", "2"],
+                                    str(tmp_path / "run1.log"), env_extra={"INJECT_LOG": log})
+    wait_for_reads(log, int(1.5 * K * Z), proc)
+    os.killpg(proc.pid, signal.SIGKILL)
+    assert proc.wait(timeout=60) == -9
+    leaked = shm_blocks()
+    assert len(leaked) == 3 and all("-p%d-" % proc.pid in b for b in leaked), leaked
+    rerun = zarr_run(slide, tmp_path, ["--store-writers", "2"])
+    assert rerun.returncode == 0, rerun.stdout
+    assert "removed 3 stale shared-memory blocks" in rerun.stdout
+    assert shm_blocks() == []
+    assert_matches_png(tile_store.open(store_path(tmp_path)), png_reference)
+
+
+def test_resume_refuses_a_store_made_from_another_input(slide, tmp_path):
+    out = tmp_path / "out"
+    assert zarr_run(slide, out).returncode == 0
+    with open(os.path.join(store_path(out), "zarr.json")) as f:
+        attrs = json.load(f)["attributes"]
+    assert attrs["palyim_cropper"] == {"input_file": SLIDE_FILE, "input_bytes": os.path.getsize(slide)}
+    before = progress(out)
+
+    # Same file name, same size, same grid, other calibration (0.5 um/px instead of 0.25).
+    other = write_slide(str(tmp_path / SLIDE_FILE), pixels_per_um=2.0)
+    assert os.path.getsize(other) == os.path.getsize(slide)
+    proc = zarr_run(other, out)
+    assert proc.returncode == 1, proc.stdout
+    assert "made from another input" in proc.stdout and "calibration" in proc.stdout and "--overwrite" in proc.stdout
+
+    # The same pixels under another file name that maps to the same slide name.
+    renamed = str(tmp_path / "synth copy.tif")
+    shutil.copy(slide, renamed)
+    proc = zarr_run(renamed, out)
+    assert proc.returncode == 1, proc.stdout
+    assert "input_file" in proc.stdout
+    assert progress(out) == before
+
+    proc = zarr_run(renamed, out, ["-w"])
+    assert proc.returncode == 0, proc.stdout

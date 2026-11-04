@@ -55,15 +55,19 @@ def make_pixels(seed=7):
     return data
 
 
-@pytest.fixture(scope="session")
-def slide(tmp_path_factory):
+def write_slide(path, pixels_per_um=4.0):
+    """Write the synthetic slide (calibration 1 / pixels_per_um um per pixel) to ``path``."""
     import tifffile
 
-    d = tmp_path_factory.mktemp("slide")
-    path = str(d / SLIDE_FILE)
-    tifffile.imwrite(path, make_pixels(), imagej=True, photometric="rgb", resolution=(4.0, 4.0),
-                     metadata={"axes": "ZYXS", "unit": "um", "spacing": 1.0})
+    tifffile.imwrite(path, make_pixels(), imagej=True, photometric="rgb",
+                     resolution=(pixels_per_um, pixels_per_um), metadata={"axes": "ZYXS", "unit": "um", "spacing": 1.0})
     return path
+
+
+@pytest.fixture(scope="session")
+def slide(tmp_path_factory):
+    d = tmp_path_factory.mktemp("slide")
+    return write_slide(str(d / SLIDE_FILE))
 
 
 def run_cli(args, env_extra=None, use_driver=False, cli=CLI, timeout=900):
@@ -74,6 +78,29 @@ def run_cli(args, env_extra=None, use_driver=False, cli=CLI, timeout=900):
     proc = subprocess.run(cmd, env=env, cwd=os.path.dirname(cli), stdout=subprocess.PIPE,
                           stderr=subprocess.STDOUT, timeout=timeout, universal_newlines=True)
     return proc
+
+
+def start_cli_in_new_session(args, log_path, env_extra=None, use_driver=True, cli=CLI):
+    """Start the CLI in its own process group (so the test can signal the whole group); returns the Popen."""
+    env = dict(os.environ)
+    env["CROPPER_CLI"] = cli
+    env.update(env_extra or {})
+    cmd = [sys.executable, DRIVER if use_driver else cli] + list(args)
+    log = open(log_path, "w")
+    return subprocess.Popen(cmd, env=env, cwd=os.path.dirname(cli), stdout=log, stderr=subprocess.STDOUT,
+                            start_new_session=True)
+
+
+def wait_for_reads(log, n, proc, timeout=600):
+    """Wait until the injection log has at least n reads (or the process ended)."""
+    import time
+
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        if len(read_log(log)) >= n or proc.poll() is not None:
+            return len(read_log(log))
+        time.sleep(0.2)
+    raise AssertionError("timed out waiting for %d reads" % n)
 
 
 def read_log(path):
