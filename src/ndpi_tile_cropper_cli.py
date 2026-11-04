@@ -20,6 +20,7 @@ import logging
 import os
 import shutil
 import signal
+import sys
 from tqdm import tqdm
 
 import bioformats
@@ -88,8 +89,24 @@ class NDPITileCropperCLI(object):
         parser.add_argument(
             '--tile_format',
             default='png',
-            choices=['png'],
-            help='Format of the tiles. [not implemented yet]')
+            choices=['png', 'zarr'],
+            help='Format of the tiles. png (default): one PNG per focal plane under <output_dir>/<slide>/. '
+                 'zarr: one Zarr v3 tile store <output_dir>/<slide>.zarr (needs palyim-io[zarr], Python >= 3.11); '
+                 'not combinable with --zip.')
+        parser.add_argument(
+            '--zarr-writers',
+            type=int,
+            default=0,
+            help='Zarr mode: number of writer processes that compress and write shards while this process reads '
+                 'the next one (default 0: write in this process). Each writer needs one more shard buffer in '
+                 '/dev/shm (~432 MiB for 9 planes at 2048 px; pass --shm-size to Docker) plus up to ~1 GB while '
+                 'it writes. Reading is usually the bottleneck, so writers gain little (0-10%% in local tests).')
+        parser.add_argument(
+            '--zarr-tiles-per-shard',
+            type=int,
+            default=None,
+            help='Zarr mode, for tests: tiles per shard when the store is created. Default: palyim-io\'s '
+                 'floor(512 MiB / (Z x tile bytes)), e.g. 4 for 9 planes of 2048 px.')
         parser.add_argument(
             '--timings-json',
             default=None,
@@ -258,7 +275,62 @@ class NDPIFileCropper:
         finally:
             reader.close()
 
+    def crop_tiles_zarr(self, writers=0, tiles_per_shard=None, timer=None):
+        """Crop tiles into the Zarr v3 tile store <output_dir>/<slide>.zarr (--tile_format zarr).
+
+        Same grid, same reused reader and the same openBytesXYWH calls as crop_tiles(); the store layout and
+        the writer processes are in zarr_mode.py. Resumes an existing store (after checking it matches this
+        input) unless overwrite is set, which deletes and recreates it. Returns the number of planes that
+        could not be read (stored as zeros, listed in the store's progress.json); the caller exits 1 if any.
+        """
+        import zarr_mode  # lazy: needs palyim-io[zarr] (Python >= 3.11); PNG mode never imports it
+
+        logger.info(self.input_filename + ": Crop tiles from NDPISlide into a Zarr tile store")
+        img_name = os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]
+        store_path = os.path.join(self.output_dir, img_name + '.zarr')
+
+        width = self._get_tile_size()
+        height = self._get_tile_size()
+        overlap = self._get_tile_overlap()
+
+        # The grid of crop_tiles(): x outer, y inner (palyim_io.layout.tile_grid gives the same list).
+        start_x_list = np.arange(0, self.metadata['width'] - width, width - overlap).tolist()
+        start_y_list = np.arange(0, self.metadata['height'] - height, height - overlap).tolist()
+        start_xy_list = []
+        for i in range(len(start_x_list)):
+            for j in range(len(start_y_list)):
+                start_xy_list.append((start_x_list[i], start_y_list[j]))
+
+        logger.info(self.input_filename + ": Number of tiles: " + str(len(start_xy_list)))
+        self.total_tile_count = len(start_xy_list)
+
+        # The dict crop_tiles() writes to metadata.json; stored as the store's attrs "palyim".
+        slide_metadata = dict()
+        slide_metadata['tile_size'] = self.tile_size
+        slide_metadata['tile_overlap'] = self.tile_overlap
+        slide_metadata['ome_metadata'] = self.metadata
+        slide_metadata['total_tile_count'] = self.total_tile_count
+        slide_metadata['processed_tile_count'] = 0
+        slide_metadata['percent_complete'] = 0.0
+
+        ImageReader = format_reader.make_image_reader_class()
+        reader = ImageReader()
+        reader.setId(self.input_file_path)
+        try:
+            result = zarr_mode.crop_to_store(
+                reader, store_path, start_xy_list, self.metadata['z_plane'], width, slide_metadata,
+                overwrite=self.overwrite_flag, writers=writers, tiles_per_shard=tiles_per_shard, timer=timer,
+                name=self.input_filename)
+        finally:
+            reader.close()
+        self.processed_tile_count = result.processed_tile_count
+        return result.failed_planes
+
     def write_metadata_before_exiting(self):
+        if self.tile_format == 'zarr':
+            # Zarr mode writes nothing under <output_dir>/<slide>/: the slide metadata lives in the store's attrs
+            # (written at create and at finish by crop_tiles_zarr) and progress in its progress.json.
+            return
         crops_dir = str(os.path.join(self.output_dir, os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]))
         crops_dir_metadata_file_path = os.path.join(crops_dir, 'metadata.json')
         if os.path.exists(crops_dir_metadata_file_path):
@@ -333,7 +405,8 @@ class NDPIFileCropper:
         logger.info("Shutting down JVM.")
         javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI...")
-        exit(0)
+        # Zarr mode exits non-zero when it did not finish (the store stays incomplete; a rerun resumes it).
+        exit(1 if self.tile_format == 'zarr' else 0)
 
 
 def process_single_tile_parallel(args):
@@ -429,8 +502,13 @@ if __name__ == '__main__':
     ndpi_file_cropper = NDPIFileCropper(cli.args.input_file, cli.args.output_dir, cli.args.tile_size,
                                         cli.args.tile_overlap, cli.args.tile_format, cli.args.overwrite)
 
+    exit_code = 0
     timer = PhaseTimer()
     try:
+        if cli.args.tile_format == 'zarr' and cli.args.zip:
+            logger.error("--zip cannot be combined with --tile_format zarr: the store is already a few large files.")
+            raise SystemExit(2)
+
         logback.basic_config()
 
         # Read the metadata of the NDPISlide
@@ -443,8 +521,15 @@ if __name__ == '__main__':
                 ndpi_file_cropper.unzip_tiles()
 
         # Crop tiles from the NDPISlide
-        with timer.phase("crop_tiles"):
-            ndpi_file_cropper.crop_tiles()
+        if cli.args.tile_format == 'zarr':
+            with timer.phase("crop_tiles"):
+                failed_planes = ndpi_file_cropper.crop_tiles_zarr(cli.args.zarr_writers, cli.args.zarr_tiles_per_shard,
+                                                                  timer)
+            if failed_planes:
+                exit_code = 1
+        else:
+            with timer.phase("crop_tiles"):
+                ndpi_file_cropper.crop_tiles()
 
         # Write metadata before exiting
         ndpi_file_cropper.write_metadata_before_exiting()
@@ -457,6 +542,9 @@ if __name__ == '__main__':
     except Exception as e:
         logger.info("Exception in NDPITileCropper CLI")
         logger.error(e, exc_info=True)
+        if cli.args.tile_format == 'zarr':
+            # PNG mode keeps its exit status 0 (known issue); Zarr mode fails loudly.
+            exit_code = 1
     finally:
         # Write metadata before exiting
         ndpi_file_cropper.write_metadata_before_exiting()
@@ -473,3 +561,6 @@ if __name__ == '__main__':
         logger.info("Shutting down JVM.")
         javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI")
+
+    if exit_code:
+        sys.exit(exit_code)
