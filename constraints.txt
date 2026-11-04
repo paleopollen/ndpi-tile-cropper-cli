@@ -1,0 +1,28 @@
+# Pins for every package in the image, applied with `pip install -c constraints.txt`.
+#
+# Where they come from: requirements.txt at the PR base (ae045e0) for the direct dependencies, and for everything
+# else the `pip freeze` of a Python 3.9 image built from that commit's Dockerfile on 2026-11-04, with numpy moved to
+# 1.26.4 (1.25.2 has no cp312 wheel) plus the packages zarr and palyim-io add. Without these pins a Python 3.12
+# install drifts (boto3/botocore, s3transfer, urllib3 1.x -> 2.x). The production SIFs are not readable, so their
+# freeze is not the source; when a SIF is built from this image, save its `pip freeze` next to it as the record.
+boto3==1.42.97
+botocore==1.42.97
+future==1.0.0
+jmespath==1.1.0
+numpy==1.26.4
+Pillow==10.1.0
+python-bioformats==4.0.7
+python-dateutil==2.9.0.post0
+python-javabridge==4.0.3
+s3transfer==0.16.1
+six==1.17.0
+tqdm==4.66.1
+urllib3==1.26.20
+# Added for the Zarr tile store (palyim-io[zarr]):
+donfig==0.8.1.post1
+google-crc32c==1.9.0
+numcodecs==0.16.6
+packaging==26.3
+PyYAML==6.0.3
+typing_extensions==4.16.0
+zarr==3.1.5
