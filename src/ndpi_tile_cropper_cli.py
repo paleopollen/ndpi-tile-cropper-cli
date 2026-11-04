@@ -31,6 +31,9 @@ from zipfile import ZipFile
 from PIL import Image
 from bioformats import logback
 
+# Vendored unchanged from palyim-io (stdlib only, Python 3.9). Zarr mode imports palyim_io lazily instead.
+from utils.palyim_timing import PhaseTimer
+
 
 class NDPITileCropperCLI(object):
     """Command line interface for NDPITileCropper."""
@@ -87,6 +90,11 @@ class NDPITileCropperCLI(object):
             default='png',
             choices=['png'],
             help='Format of the tiles. [not implemented yet]')
+        parser.add_argument(
+            '--timings-json',
+            default=None,
+            help='Write the per-phase timings to this JSON file. They are always logged at the end of a run; '
+                 'Zarr mode also stores them in the store\'s attrs.')
         parser.add_argument(
             '--zip', '-z',
             action='store_true',
@@ -421,25 +429,30 @@ if __name__ == '__main__':
     ndpi_file_cropper = NDPIFileCropper(cli.args.input_file, cli.args.output_dir, cli.args.tile_size,
                                         cli.args.tile_overlap, cli.args.tile_format, cli.args.overwrite)
 
+    timer = PhaseTimer()
     try:
         logback.basic_config()
 
         # Read the metadata of the NDPISlide
-        ndpi_file_cropper.read_metadata()
+        with timer.phase("read_metadata"):
+            ndpi_file_cropper.read_metadata()
 
         # Unzip the tiles directory if the zip flag is set and if the zip file exists
         if cli.args.zip:
-            ndpi_file_cropper.unzip_tiles()
+            with timer.phase("unzip"):
+                ndpi_file_cropper.unzip_tiles()
 
         # Crop tiles from the NDPISlide
-        ndpi_file_cropper.crop_tiles()
+        with timer.phase("crop_tiles"):
+            ndpi_file_cropper.crop_tiles()
 
         # Write metadata before exiting
         ndpi_file_cropper.write_metadata_before_exiting()
 
         # Zip the tiles directory if the zip flag is set
         if cli.args.zip:
-            ndpi_file_cropper.zip_tiles()
+            with timer.phase("zip"):
+                ndpi_file_cropper.zip_tiles()
 
     except Exception as e:
         logger.info("Exception in NDPITileCropper CLI")
@@ -447,6 +460,14 @@ if __name__ == '__main__':
     finally:
         # Write metadata before exiting
         ndpi_file_cropper.write_metadata_before_exiting()
+
+        timer.stop()
+        timer.log(logger)
+        if cli.args.timings_json:
+            try:
+                timer.write_json(cli.args.timings_json)
+            except OSError as e:
+                logger.error("Could not write timings to " + cli.args.timings_json + ": " + str(e))
 
         # Stop the JVM
         logger.info("Shutting down JVM.")
