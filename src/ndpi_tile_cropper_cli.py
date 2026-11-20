@@ -249,7 +249,7 @@ class NDPIFileCropper:
                     else:
                         consecutive_failures = 0
                         self.processed_tile_count += 1
-                        logger.info(self.input_filename + ": Tile " + str(i) + " complete.")
+                        logger.debug(self.input_filename + ": Tile " + str(i) + " complete.")
 
                     pbar.update(1)
 
