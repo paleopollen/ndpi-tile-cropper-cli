@@ -127,6 +127,8 @@ class NDPIFileCropper:
 
         self.total_tile_count = 0
         self.processed_tile_count = 0
+        self.failed_tile_count = 0
+        self.max_consecutive_tile_failures = 10
 
         # Handle SIGINT and SIGTERM
         signal.signal(signal.SIGINT, self.exit_program)
@@ -200,6 +202,7 @@ class NDPIFileCropper:
         reader = ImageReader()
         reader.setId(self.input_file_path)
         
+        consecutive_failures = 0
         try:
             # Process tiles with progress bar
             with tqdm(total=len(start_xy_list), desc=f"Processing tiles for {self.input_filename}", unit="tile") as pbar:
@@ -209,7 +212,8 @@ class NDPIFileCropper:
                         os.makedirs(tile_dir)
 
                     z_plane_image_count = self.__count_files(tile_dir, self.tile_format)
-                    
+                    tile_failed = False
+
                     if z_plane_image_count < self.metadata['z_plane'] or self.overwrite_flag:
                         # Process all z-planes for this tile
                         for j in range(self.metadata['z_plane']):
@@ -219,13 +223,30 @@ class NDPIFileCropper:
                                 im = Image.fromarray(img)
                                 im.save(os.path.join(tile_dir, str(j) + 'z.png'))
                             except Exception as e:
+                                tile_failed = True
                                 logger.error(f"Error processing z-plane {j} for tile {i}: {e}")
                     else:
                         logger.info(self.input_filename + ": Tile " + str(i) + " already exists. Skipping...")
-                    
-                    self.processed_tile_count += 1
-                    logger.info(self.input_filename + ": Tile " + str(i) + " complete.")
+
+                    if tile_failed:
+                        self.failed_tile_count += 1
+                        consecutive_failures += 1
+                        logger.error(self.input_filename + ": Tile " + str(i) + " incomplete due to z-plane failures.")
+                        if consecutive_failures >= self.max_consecutive_tile_failures:
+                            raise RuntimeError(
+                                f"{self.input_filename}: Aborting after {consecutive_failures} consecutive incomplete tiles."
+                            )
+                    else:
+                        consecutive_failures = 0
+                        self.processed_tile_count += 1
+                        logger.info(self.input_filename + ": Tile " + str(i) + " complete.")
+
                     pbar.update(1)
+
+            if self.failed_tile_count > 0:
+                raise RuntimeError(
+                    f"{self.input_filename}: Completed with {self.failed_tile_count} incomplete tile(s)."
+                )
         finally:
             reader.close()
 
@@ -326,6 +347,7 @@ if __name__ == '__main__':
     ndpi_file_cropper = NDPIFileCropper(cli.args.input_file, cli.args.output_dir, cli.args.tile_size,
                                         cli.args.tile_overlap, cli.args.tile_format, cli.args.overwrite)
 
+    exit_code = 0
     try:
         logback.basic_config()
 
@@ -347,6 +369,7 @@ if __name__ == '__main__':
             ndpi_file_cropper.zip_tiles()
 
     except Exception as e:
+        exit_code = 1
         logger.info("Exception in NDPITileCropper CLI")
         logger.error(e, exc_info=True)
     finally:
@@ -357,3 +380,5 @@ if __name__ == '__main__':
         logger.info("Shutting down JVM.")
         javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI")
+
+    raise SystemExit(exit_code)
