@@ -106,7 +106,7 @@ class NDPITileCropperParallelCLI(object):
         return input_files
 
     def __process_file(self, input_file):
-        """Process a file with optimized JVM settings."""
+        """Process a file."""
         logger.info("Started processing file: {}".format(input_file))
         if self.args.output_dir:
             output_dir = self.args.output_dir
@@ -114,11 +114,7 @@ class NDPITileCropperParallelCLI(object):
             output_dir = os.path.splitext(input_file)[0] + "_tiles"
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        
-        # Set JVM memory options for better performance
-        env = os.environ.copy()
-        env['JAVA_OPTS'] = f"-Xmx4g -Xms2g -XX:+UseG1GC"
-        
+
         command = ["python", "ndpi_tile_cropper_cli.py", "-i", input_file, "-o", output_dir, "-s", str(self.args.tile_size),
                    "-l", str(self.args.tile_overlap), "-g", str(self.args.log_level)]
 
@@ -129,7 +125,7 @@ class NDPITileCropperParallelCLI(object):
         if self.args.verbose:
             command.append("-v")
 
-        result = subprocess.run(command, env=env)
+        result = subprocess.run(command)
         logger.info(result)
         logger.info("Finished processing file: {}".format(input_file))
 
