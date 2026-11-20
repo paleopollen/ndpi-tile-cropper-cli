@@ -11,7 +11,10 @@ Jennifer T. Feng, Shu Kong, Timme H. Donders, and Surangi W. Punyasena.
 
 ## Docker-based Installation and Run Instructions (Recommended)
 
-Note: This is not tested on Apple Silicon M series chips.
+Note: On Apple Silicon (M-series) Macs this project only works via Rosetta emulation. Use
+`--platform linux/amd64` on both `docker build` and `docker run`. Native `arm64` builds are not
+supported (python-javabridge has no arm64 wheel, and Bio-Formats ships turbojpeg only for x86_64
+Linux/macOS/Windows).
 
 ### Prerequisites
 
@@ -28,8 +31,8 @@ cd ndpi-tile-cropper-cli
 ### Build Docker Images
 
 ```shell
-docker build -t ndpi-tile-cropper .
-docker build -t ndpi-tile-cropper-parallel -f parallel.Dockerfile .
+docker build --platform linux/amd64 -t ndpi-tile-cropper .
+docker build --platform linux/amd64 -t ndpi-tile-cropper-parallel -f parallel.Dockerfile .
 ```
 
 ### Run CLI in Serial Mode
@@ -43,13 +46,13 @@ i.e. `-v $(pwd)/data:/data` needs to be replaced with `-v </path/to/input/data/f
 Example command:
 
 ```shell
-docker run -it --rm -v $(pwd)/data:/data --name ndpi-tile-cropper-container ndpi-tile-cropper -i /data/NDPI/NDPI_1.ndpi -o /data/NDPI/NDPI_1_tiles
+docker run --platform linux/amd64 -it --rm -v $(pwd)/data:/data --name ndpi-tile-cropper-container ndpi-tile-cropper -i /data/NDPI/NDPI_1.ndpi -o /data/NDPI/NDPI_1_tiles
 ```
 
 Help command:
 
 ```shell
-docker run -it --rm ndpi-tile-cropper --help
+docker run --platform linux/amd64 -it --rm ndpi-tile-cropper --help
 ```
 
 ### Run CLI in Parallel Mode
@@ -60,13 +63,13 @@ processes. The number of processes can be changed by modifying the `--num_proces
 Example command:
 
 ```shell
-docker run -it --rm -v $(pwd)/data:/data --name ndpi-tile-cropper-parallel-container ndpi-tile-cropper-parallel -i /data/NDPI -o /data/NDPI/output
+docker run --platform linux/amd64 -it --rm -v $(pwd)/data:/data --name ndpi-tile-cropper-parallel-container ndpi-tile-cropper-parallel -d /data/NDPI -o /data/NDPI/output
 ```
 
 Help command:
 
 ```shell
-docker run -it --rm ndpi-tile-cropper-parallel --help
+docker run --platform linux/amd64 -it --rm ndpi-tile-cropper-parallel --help
 ```
 
 ## Usage

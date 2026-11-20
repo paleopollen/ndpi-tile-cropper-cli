@@ -18,6 +18,7 @@ import concurrent.futures
 import logging
 import os
 import subprocess
+from tqdm import tqdm
 
 
 class NDPITileCropperParallelCLI(object):
@@ -113,6 +114,7 @@ class NDPITileCropperParallelCLI(object):
             output_dir = os.path.splitext(input_file)[0] + "_tiles"
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
+
         command = ["python", "ndpi_tile_cropper_cli.py", "-i", input_file, "-o", output_dir, "-s", str(self.args.tile_size),
                    "-l", str(self.args.tile_overlap), "-g", str(self.args.log_level)]
 
@@ -128,12 +130,23 @@ class NDPITileCropperParallelCLI(object):
         logger.info("Finished processing file: {}".format(input_file))
 
     def process_files_in_parallel(self):
-        """Process the files in parallel."""
+        """Process the files in parallel with progress tracking."""
         logger.info("Started processing files in parallel")
         input_files = self._get_input_files()
+        
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.args.num_processes) as executor:
-            for input_file in input_files:
-                executor.submit(self.__process_file, input_file)
+            # Submit all tasks and collect futures
+            futures = [executor.submit(self.__process_file, input_file) for input_file in input_files]
+            
+            # Wait for all tasks to complete with progress bar
+            with tqdm(total=len(futures), desc="Processing files", unit="file") as pbar:
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        future.result()  # This will raise any exceptions that occurred
+                    except Exception as e:
+                        logger.error(f"Error processing file: {e}")
+                    pbar.update(1)
+        
         logger.info("Finished processing files in parallel")
 
 
