@@ -129,6 +129,7 @@ class NDPIFileCropper:
         self.processed_tile_count = 0
         self.failed_tile_count = 0
         self.max_consecutive_tile_failures = 10
+        self._stop_requested = False
 
         # Handle SIGINT and SIGTERM
         signal.signal(signal.SIGINT, self.exit_program)
@@ -207,6 +208,10 @@ class NDPIFileCropper:
             # Process tiles with progress bar
             with tqdm(total=len(start_xy_list), desc=f"Processing tiles for {self.input_filename}", unit="tile") as pbar:
                 for i, (start_x, start_y) in enumerate(start_xy_list):
+                    if self._stop_requested:
+                        logger.info(self.input_filename + ": Stop requested; ending tile processing loop.")
+                        break
+
                     tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
                     if not os.path.exists(tile_dir):
                         os.makedirs(tile_dir)
@@ -228,6 +233,11 @@ class NDPIFileCropper:
                     else:
                         logger.info(self.input_filename + ": Tile " + str(i) + " already exists. Skipping...")
 
+                    if self._stop_requested:
+                        logger.info(self.input_filename + ": Stop requested; ending tile processing loop.")
+                        pbar.update(1)
+                        break
+
                     if tile_failed:
                         self.failed_tile_count += 1
                         consecutive_failures += 1
@@ -243,12 +253,15 @@ class NDPIFileCropper:
 
                     pbar.update(1)
 
-            if self.failed_tile_count > 0:
+            if not self._stop_requested and self.failed_tile_count > 0:
                 raise RuntimeError(
                     f"{self.input_filename}: Completed with {self.failed_tile_count} incomplete tile(s)."
                 )
         finally:
-            reader.close()
+            try:
+                reader.close()
+            except Exception as e:
+                logger.debug(self.input_filename + ": Error closing reader during cleanup: " + str(e))
 
     def write_metadata_before_exiting(self):
         crops_dir = str(os.path.join(self.output_dir, os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]))
@@ -319,13 +332,12 @@ class NDPIFileCropper:
         return self.tile_format
 
     def exit_program(self, signum, frame):
-        """Exit the program."""
+        """Request a clean stop; leave JVM/reader cleanup to the main loop."""
         logger.info("Received signal: " + str(signum))
+        self._stop_requested = True
         self.write_metadata_before_exiting()
-        logger.info("Shutting down JVM.")
-        javabridge.kill_vm()
-        logger.info("Stopping NDPITileCropper CLI...")
-        exit(0)
+        logger.info("Stop requested; finishing current cleanup...")
+
 
 
 if __name__ == '__main__':
