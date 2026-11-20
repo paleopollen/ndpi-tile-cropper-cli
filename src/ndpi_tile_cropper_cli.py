@@ -150,25 +150,6 @@ class NDPIFileCropper:
         self.metadata['height'] = height
         self.metadata['z_plane'] = z_plane
 
-    def __read_tile(self, x, y, z, width, height):
-        """Read a tile from an NDPISlide."""
-        logger.debug(self.input_filename + ": Read a tile from NDPISlide: " + str(x) + "x_" + str(y) + "y_" + str(z) + "z")
-        img_path = self.input_file_path
-
-        ImageReader = format_reader.make_image_reader_class()
-        reader = ImageReader()
-        img = None
-        try:
-            reader.setId(img_path)
-            img = reader.openBytesXYWH(z, x, y, width, height)
-            img.shape = (height, width, 3)
-        except Exception as ex:
-            logger.error(self.input_filename + ": Error reading tile: " + str(x) + "x_" + str(y) + "y_" + str(z) + "z")
-            logger.error(ex, exc_info=True)
-        finally:
-            reader.close()
-            return img
-
     @staticmethod
     def __count_files(directory, file_extension):
         files = glob.glob(os.path.join(directory, "*." + file_extension))
@@ -235,10 +216,8 @@ class NDPIFileCropper:
                             try:
                                 img = reader.openBytesXYWH(j, start_x, start_y, width, height)
                                 img.shape = (height, width, 3)
-                                
-                                if img is not None:
-                                    im = Image.fromarray(img)
-                                    im.save(os.path.join(tile_dir, str(j) + 'z.png'))
+                                im = Image.fromarray(img)
+                                im.save(os.path.join(tile_dir, str(j) + 'z.png'))
                             except Exception as e:
                                 logger.error(f"Error processing z-plane {j} for tile {i}: {e}")
                     else:
@@ -326,80 +305,6 @@ class NDPIFileCropper:
         javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI...")
         exit(0)
-
-
-def process_single_tile_parallel(args):
-    """Process a single tile in a separate process for parallel execution."""
-    import bioformats
-    import bioformats.formatreader as format_reader
-    import javabridge
-    from PIL import Image
-    import os
-    import glob
-    import logging
-    import time
-    import random
-    
-    # Set up logging for this process
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s')
-    logger = logging.getLogger(f"tile_processor_{args['tile_index']}")
-    
-    try:
-        # Add random delay to prevent JVM startup conflicts
-        time.sleep(random.uniform(0.1, 0.5))
-        
-        # Start JVM for this process with better isolation
-        javabridge.start_vm(
-            class_path=bioformats.JARS, 
-            run_headless=True,
-            max_heap_size='2g',
-            jvm_options=['-Djava.awt.headless=true', '-XX:+UseG1GC']
-        )
-        
-        # Create tile directory
-        tile_dir = os.path.join(args['crops_dir'], f"{args['start_x']}x_{args['start_y']}y")
-        if not os.path.exists(tile_dir):
-            os.makedirs(tile_dir)
-        
-        # Check if tile already exists
-        existing_files = glob.glob(os.path.join(tile_dir, f"*.{args['tile_format']}"))
-        if len(existing_files) >= args['z_planes'] and not args['overwrite_flag']:
-            logger.info(f"Tile {args['tile_index']} already exists. Skipping...")
-            return True
-        
-        # Process all z-planes for this tile
-        for z in range(args['z_planes']):
-            try:
-                # Read tile from NDPI file
-                ImageReader = format_reader.make_image_reader_class()
-                reader = ImageReader()
-                reader.setId(args['input_file_path'])
-                
-                img = reader.openBytesXYWH(z, args['start_x'], args['start_y'], args['width'], args['height'])
-                img.shape = (args['height'], args['width'], 3)
-                
-                # Save image
-                im = Image.fromarray(img)
-                im.save(os.path.join(tile_dir, f"{z}z.png"))
-                
-                reader.close()
-                
-            except Exception as e:
-                logger.error(f"Error processing z-plane {z} for tile {args['tile_index']}: {e}")
-                return False
-        
-        logger.info(f"Tile {args['tile_index']} completed successfully")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error processing tile {args['tile_index']}: {e}")
-        return False
-    finally:
-        # Clean up JVM
-        try:
-            javabridge.kill_vm()
-        except:
-            pass
 
 
 if __name__ == '__main__':
