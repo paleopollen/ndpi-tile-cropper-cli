@@ -20,6 +20,7 @@ import logging
 import os
 import shutil
 import signal
+from tqdm import tqdm
 
 import bioformats
 import bioformats.formatreader as format_reader
@@ -29,6 +30,9 @@ import numpy as np
 from zipfile import ZipFile
 from PIL import Image
 from bioformats import logback
+
+# Vendored unchanged from palyim-io (stdlib only, Python 3.9). Zarr mode imports palyim_io lazily instead.
+from utils.palyim_timing import PhaseTimer
 
 
 class NDPITileCropperCLI(object):
@@ -84,8 +88,29 @@ class NDPITileCropperCLI(object):
         parser.add_argument(
             '--tile_format',
             default='png',
-            choices=['png'],
-            help='Format of the tiles. [not implemented yet]')
+            choices=['png', 'zarr'],
+            help='Format of the tiles. png (default): one PNG per focal plane under <output_dir>/<slide>/. '
+                 'zarr: one Zarr v3 tile store <output_dir>/<slide>.zarr (needs palyim-io[zarr], Python >= 3.11); '
+                 'not combinable with --zip.')
+        parser.add_argument(
+            '--store-writers',
+            type=int,
+            default=0,
+            help='Zarr mode: number of writer processes that compress and write shards while this process reads '
+                 'the next one (default 0: write in this process). Each writer needs one more shard buffer in '
+                 '/dev/shm (~432 MiB for 9 planes at 2048 px; pass --shm-size to Docker) plus up to ~1 GB while '
+                 'it writes. Reading is usually the bottleneck, so writers gain little (0-10%% in local tests).')
+        parser.add_argument(
+            '--store-tiles-per-shard',
+            type=int,
+            default=None,
+            help='Zarr mode, for tests: tiles per shard when the store is created. Default: palyim-io\'s '
+                 'floor(512 MiB / (Z x tile bytes)), e.g. 4 for 9 planes of 2048 px.')
+        parser.add_argument(
+            '--timings-json',
+            default=None,
+            help='Write the per-phase timings to this JSON file. They are always logged at the end of a run; '
+                 'Zarr mode also stores them in the store\'s attrs.')
         parser.add_argument(
             '--zip', '-z',
             action='store_true',
@@ -126,6 +151,9 @@ class NDPIFileCropper:
 
         self.total_tile_count = 0
         self.processed_tile_count = 0
+        self.failed_tile_count = 0
+        self.max_consecutive_tile_failures = 10
+        self._stop_requested = False
 
         # Handle SIGINT and SIGTERM
         signal.signal(signal.SIGINT, self.exit_program)
@@ -149,35 +177,15 @@ class NDPIFileCropper:
         self.metadata['height'] = height
         self.metadata['z_plane'] = z_plane
 
-    def __read_tile(self, x, y, z, width, height):
-        """Read a tile from an NDPISlide."""
-        logger.debug(self.input_filename + ": Read a tile from NDPISlide: " + str(x) + "x_" + str(y) + "y_" + str(z) + "z")
-        img_path = self.input_file_path
-
-        ImageReader = format_reader.make_image_reader_class()
-        reader = ImageReader()
-        img = None
-        try:
-            reader.setId(img_path)
-            img = reader.openBytesXYWH(z, x, y, width, height)
-            img.shape = (height, width, 3)
-        except Exception as ex:
-            logger.error(self.input_filename + ": Error reading tile: " + str(x) + "x_" + str(y) + "y_" + str(z) + "z")
-            logger.error(ex, exc_info=True)
-        finally:
-            reader.close()
-            return img
-
     @staticmethod
     def __count_files(directory, file_extension):
         files = glob.glob(os.path.join(directory, "*." + file_extension))
         return len(files)
 
     def crop_tiles(self):
-        """Crop tiles from an NDPISlide."""
+        """Crop tiles from an NDPISlide using optimized I/O."""
         logger.info(self.input_filename + ": Crop tiles from NDPISlide")
         img_name = os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]
-        # core_name = self.input_file.split('/')[-2].split('_')[0]
         crops_dir = str(os.path.join(self.output_dir, img_name))
         if not os.path.exists(crops_dir):
             os.makedirs(crops_dir)
@@ -210,34 +218,136 @@ class NDPIFileCropper:
         crops_dir_metadata_dict['percent_complete'] = 0.0
 
         crops_dir_metadata_file_path = os.path.join(crops_dir, 'metadata.json')
-
-        # Write metadata to the crops directory if it does not exist
         if not os.path.exists(crops_dir_metadata_file_path):
             with open(crops_dir_metadata_file_path, 'w') as f:
                 json.dump(crops_dir_metadata_dict, f, indent=4)
 
-        for i in range(len(start_xy_list)):
-            start_x = start_xy_list[i][0]
-            start_y = start_xy_list[i][1]
-            tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
-            if not os.path.exists(tile_dir):
-                os.makedirs(tile_dir)
+        # Pre-allocate reader for better performance (KEY OPTIMIZATION)
+        ImageReader = format_reader.make_image_reader_class()
+        reader = ImageReader()
+        reader.setId(self.input_file_path)
+        
+        consecutive_failures = 0
+        try:
+            # Process tiles with progress bar
+            with tqdm(total=len(start_xy_list), desc=f"Processing tiles for {self.input_filename}", unit="tile") as pbar:
+                for i, (start_x, start_y) in enumerate(start_xy_list):
+                    if self._stop_requested:
+                        logger.info(self.input_filename + ": Stop requested; ending tile processing loop.")
+                        break
 
-            z_plane_image_count = self.__count_files(tile_dir, self.tile_format)
-            # Proceed only if the number of z-plane images is less than the number of z-planes in the image or if the
-            # overwrite flag is set
-            if z_plane_image_count < self.metadata['z_plane'] or self.overwrite_flag:
-                for j in range(self.metadata['z_plane']):
-                    img = self.__read_tile(x=start_x, y=start_y, z=j, width=width, height=height)
-                    if img is not None:
-                        im = Image.fromarray(img)
-                        im.save(os.path.join(tile_dir, str(j) + 'z.png'))
-            else:
-                logger.info(self.input_filename + ": Tile " + str(i) + " already exists. Skipping...")
-            self.processed_tile_count += 1
-            logger.info(self.input_filename + ": Tile " + str(i) + " complete.")
+                    tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
+                    if not os.path.exists(tile_dir):
+                        os.makedirs(tile_dir)
+
+                    z_plane_image_count = self.__count_files(tile_dir, self.tile_format)
+                    tile_failed = False
+
+                    if z_plane_image_count < self.metadata['z_plane'] or self.overwrite_flag:
+                        # Process all z-planes for this tile
+                        for j in range(self.metadata['z_plane']):
+                            try:
+                                img = reader.openBytesXYWH(j, start_x, start_y, width, height)
+                                img.shape = (height, width, 3)
+                                im = Image.fromarray(img)
+                                im.save(os.path.join(tile_dir, str(j) + 'z.png'))
+                            except Exception as e:
+                                tile_failed = True
+                                logger.error(f"Error processing z-plane {j} for tile {i}: {e}")
+                    else:
+                        logger.info(self.input_filename + ": Tile " + str(i) + " already exists. Skipping...")
+
+                    if self._stop_requested:
+                        logger.info(self.input_filename + ": Stop requested; ending tile processing loop.")
+                        pbar.update(1)
+                        break
+
+                    if tile_failed:
+                        self.failed_tile_count += 1
+                        consecutive_failures += 1
+                        logger.error(self.input_filename + ": Tile " + str(i) + " incomplete due to z-plane failures.")
+                        if consecutive_failures >= self.max_consecutive_tile_failures:
+                            raise RuntimeError(
+                                f"{self.input_filename}: Aborting after {consecutive_failures} consecutive incomplete tiles."
+                            )
+                    else:
+                        consecutive_failures = 0
+                        self.processed_tile_count += 1
+                        logger.debug(self.input_filename + ": Tile " + str(i) + " complete.")
+
+                    pbar.update(1)
+
+            if not self._stop_requested and self.failed_tile_count > 0:
+                raise RuntimeError(
+                    f"{self.input_filename}: Completed with {self.failed_tile_count} incomplete tile(s)."
+                )
+        finally:
+            try:
+                reader.close()
+            except Exception as e:
+                logger.debug(self.input_filename + ": Error closing reader during cleanup: " + str(e))
+
+    def crop_tiles_zarr(self, writers=0, tiles_per_shard=None, timer=None):
+        """Crop tiles into the Zarr v3 tile store <output_dir>/<slide>.zarr (--tile_format zarr).
+
+        Same grid, same reused reader and the same openBytesXYWH calls as crop_tiles(); the store layout and
+        the writer processes are in zarr_mode.py. Resumes an existing store (after checking it matches this
+        input) unless overwrite is set, which deletes and recreates it. Returns the number of planes that
+        could not be read (stored as zeros, listed in the store's progress.json); the caller exits 1 if any.
+        """
+        import zarr_mode  # lazy: needs palyim-io[zarr] (Python >= 3.11); PNG mode never imports it
+
+        logger.info(self.input_filename + ": Crop tiles from NDPISlide into a Zarr tile store")
+        img_name = os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]
+        store_path = os.path.join(self.output_dir, img_name + '.zarr')
+
+        width = self._get_tile_size()
+        height = self._get_tile_size()
+        overlap = self._get_tile_overlap()
+
+        # The grid of crop_tiles(): x outer, y inner (palyim_io.layout.tile_grid gives the same list).
+        start_x_list = np.arange(0, self.metadata['width'] - width, width - overlap).tolist()
+        start_y_list = np.arange(0, self.metadata['height'] - height, height - overlap).tolist()
+        start_xy_list = []
+        for i in range(len(start_x_list)):
+            for j in range(len(start_y_list)):
+                start_xy_list.append((start_x_list[i], start_y_list[j]))
+
+        logger.info(self.input_filename + ": Number of tiles: " + str(len(start_xy_list)))
+        self.total_tile_count = len(start_xy_list)
+
+        # The dict crop_tiles() writes to metadata.json; stored as the store's attrs "palyim".
+        slide_metadata = dict()
+        slide_metadata['tile_size'] = self.tile_size
+        slide_metadata['tile_overlap'] = self.tile_overlap
+        slide_metadata['ome_metadata'] = self.metadata
+        slide_metadata['total_tile_count'] = self.total_tile_count
+        slide_metadata['processed_tile_count'] = 0
+        slide_metadata['percent_complete'] = 0.0
+
+        if self._stop_requested:
+            # exit_program() only sets this flag. During the crop zarr_mode installs its own handlers; a signal
+            # that arrived before that must still stop the run, with a non-zero exit status.
+            raise RuntimeError(self.input_filename + ": Stop requested before the crop started; nothing was written.")
+
+        ImageReader = format_reader.make_image_reader_class()
+        reader = ImageReader()
+        reader.setId(self.input_file_path)
+        try:
+            result = zarr_mode.crop_to_store(
+                reader, store_path, start_xy_list, self.metadata['z_plane'], width, slide_metadata,
+                overwrite=self.overwrite_flag, writers=writers, tiles_per_shard=tiles_per_shard, timer=timer,
+                name=self.input_filename, input_path=self.input_file_path)
+        finally:
+            reader.close()
+        self.processed_tile_count = result.processed_tile_count
+        return result.failed_planes
 
     def write_metadata_before_exiting(self):
+        if self.tile_format == 'zarr':
+            # Zarr mode writes nothing under <output_dir>/<slide>/: the slide metadata lives in the store's attrs
+            # (written at create and at finish by crop_tiles_zarr) and progress in its progress.json.
+            return
         crops_dir = str(os.path.join(self.output_dir, os.path.basename(self.input_file_path).split(' ')[0].rsplit('.', maxsplit=1)[0]))
         crops_dir_metadata_file_path = os.path.join(crops_dir, 'metadata.json')
         if os.path.exists(crops_dir_metadata_file_path):
@@ -306,13 +416,12 @@ class NDPIFileCropper:
         return self.tile_format
 
     def exit_program(self, signum, frame):
-        """Exit the program."""
+        """Request a clean stop; leave JVM/reader cleanup to the main loop."""
         logger.info("Received signal: " + str(signum))
+        self._stop_requested = True
         self.write_metadata_before_exiting()
-        logger.info("Shutting down JVM.")
-        javabridge.kill_vm()
-        logger.info("Stopping NDPITileCropper CLI...")
-        exit(0)
+        logger.info("Stop requested; finishing current cleanup...")
+
 
 
 if __name__ == '__main__':
@@ -334,34 +443,62 @@ if __name__ == '__main__':
     ndpi_file_cropper = NDPIFileCropper(cli.args.input_file, cli.args.output_dir, cli.args.tile_size,
                                         cli.args.tile_overlap, cli.args.tile_format, cli.args.overwrite)
 
+    exit_code = 0
+    timer = PhaseTimer()
     try:
+        if cli.args.tile_format == 'zarr' and cli.args.zip:
+            logger.error("--zip cannot be combined with --tile_format zarr: the store is already a few large files.")
+            raise SystemExit(2)
+
         logback.basic_config()
 
         # Read the metadata of the NDPISlide
-        ndpi_file_cropper.read_metadata()
+        with timer.phase("read_metadata"):
+            ndpi_file_cropper.read_metadata()
 
         # Unzip the tiles directory if the zip flag is set and if the zip file exists
         if cli.args.zip:
-            ndpi_file_cropper.unzip_tiles()
+            with timer.phase("unzip"):
+                ndpi_file_cropper.unzip_tiles()
 
         # Crop tiles from the NDPISlide
-        ndpi_file_cropper.crop_tiles()
+        if cli.args.tile_format == 'zarr':
+            with timer.phase("crop_tiles"):
+                failed_planes = ndpi_file_cropper.crop_tiles_zarr(cli.args.store_writers, cli.args.store_tiles_per_shard,
+                                                                  timer)
+            if failed_planes:
+                exit_code = 1
+        else:
+            with timer.phase("crop_tiles"):
+                ndpi_file_cropper.crop_tiles()
 
         # Write metadata before exiting
         ndpi_file_cropper.write_metadata_before_exiting()
 
         # Zip the tiles directory if the zip flag is set
         if cli.args.zip:
-            ndpi_file_cropper.zip_tiles()
+            with timer.phase("zip"):
+                ndpi_file_cropper.zip_tiles()
 
     except Exception as e:
+        exit_code = 1
         logger.info("Exception in NDPITileCropper CLI")
         logger.error(e, exc_info=True)
     finally:
         # Write metadata before exiting
         ndpi_file_cropper.write_metadata_before_exiting()
 
+        timer.stop()
+        timer.log(logger)
+        if cli.args.timings_json:
+            try:
+                timer.write_json(cli.args.timings_json)
+            except OSError as e:
+                logger.error("Could not write timings to " + cli.args.timings_json + ": " + str(e))
+
         # Stop the JVM
         logger.info("Shutting down JVM.")
         javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI")
+
+    raise SystemExit(exit_code)
