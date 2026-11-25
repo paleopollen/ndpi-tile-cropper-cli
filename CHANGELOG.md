@@ -17,12 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Update Zenodo URL in the README.
+- Document that Apple Silicon Docker usage requires `--platform linux/amd64` via Rosetta.
+- Demote per-tile completion logs to DEBUG to avoid corrupting tqdm progress output.
+- Remove ineffective `JAVA_OPTS` usage from the parallel CLI.
 - Docker images on `python:3.12-slim-bookworm` with numpy 1.26.4, pinned through `constraints.txt`, plus
   palyim-io[zarr] from a local wheel. PNG output is unchanged.
 
 ### Fixed
 - Build error due to base image changing. [#81](https://github.com/paleopollen/palyim-issues/issues/81)
 - Issue related to low tile cropping throughput. [#87](https://github.com/paleopollen/palyim-issues/issues/87)
+- Silent tile decode failures no longer count as completed tiles; abort after consecutive failures and exit non-zero.
+- Cleaner SIGINT/SIGTERM handling so reader/JVM cleanup does not raise noisy secondary errors.
 
 ## [1.2.0] - 2025-04-22
 

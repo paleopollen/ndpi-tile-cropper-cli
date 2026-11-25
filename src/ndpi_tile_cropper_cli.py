@@ -20,7 +20,6 @@ import logging
 import os
 import shutil
 import signal
-import sys
 from tqdm import tqdm
 
 import bioformats
@@ -152,6 +151,9 @@ class NDPIFileCropper:
 
         self.total_tile_count = 0
         self.processed_tile_count = 0
+        self.failed_tile_count = 0
+        self.max_consecutive_tile_failures = 10
+        self._stop_requested = False
 
         # Handle SIGINT and SIGTERM
         signal.signal(signal.SIGINT, self.exit_program)
@@ -174,25 +176,6 @@ class NDPIFileCropper:
         self.metadata['width'] = width
         self.metadata['height'] = height
         self.metadata['z_plane'] = z_plane
-
-    def __read_tile(self, x, y, z, width, height):
-        """Read a tile from an NDPISlide."""
-        logger.debug(self.input_filename + ": Read a tile from NDPISlide: " + str(x) + "x_" + str(y) + "y_" + str(z) + "z")
-        img_path = self.input_file_path
-
-        ImageReader = format_reader.make_image_reader_class()
-        reader = ImageReader()
-        img = None
-        try:
-            reader.setId(img_path)
-            img = reader.openBytesXYWH(z, x, y, width, height)
-            img.shape = (height, width, 3)
-        except Exception as ex:
-            logger.error(self.input_filename + ": Error reading tile: " + str(x) + "x_" + str(y) + "y_" + str(z) + "z")
-            logger.error(ex, exc_info=True)
-        finally:
-            reader.close()
-            return img
 
     @staticmethod
     def __count_files(directory, file_extension):
@@ -244,36 +227,65 @@ class NDPIFileCropper:
         reader = ImageReader()
         reader.setId(self.input_file_path)
         
+        consecutive_failures = 0
         try:
             # Process tiles with progress bar
             with tqdm(total=len(start_xy_list), desc=f"Processing tiles for {self.input_filename}", unit="tile") as pbar:
                 for i, (start_x, start_y) in enumerate(start_xy_list):
+                    if self._stop_requested:
+                        logger.info(self.input_filename + ": Stop requested; ending tile processing loop.")
+                        break
+
                     tile_dir = os.path.join(str(crops_dir), str(start_x) + 'x_' + str(start_y) + 'y')
                     if not os.path.exists(tile_dir):
                         os.makedirs(tile_dir)
 
                     z_plane_image_count = self.__count_files(tile_dir, self.tile_format)
-                    
+                    tile_failed = False
+
                     if z_plane_image_count < self.metadata['z_plane'] or self.overwrite_flag:
                         # Process all z-planes for this tile
                         for j in range(self.metadata['z_plane']):
                             try:
                                 img = reader.openBytesXYWH(j, start_x, start_y, width, height)
                                 img.shape = (height, width, 3)
-                                
-                                if img is not None:
-                                    im = Image.fromarray(img)
-                                    im.save(os.path.join(tile_dir, str(j) + 'z.png'))
+                                im = Image.fromarray(img)
+                                im.save(os.path.join(tile_dir, str(j) + 'z.png'))
                             except Exception as e:
+                                tile_failed = True
                                 logger.error(f"Error processing z-plane {j} for tile {i}: {e}")
                     else:
                         logger.info(self.input_filename + ": Tile " + str(i) + " already exists. Skipping...")
-                    
-                    self.processed_tile_count += 1
-                    logger.info(self.input_filename + ": Tile " + str(i) + " complete.")
+
+                    if self._stop_requested:
+                        logger.info(self.input_filename + ": Stop requested; ending tile processing loop.")
+                        pbar.update(1)
+                        break
+
+                    if tile_failed:
+                        self.failed_tile_count += 1
+                        consecutive_failures += 1
+                        logger.error(self.input_filename + ": Tile " + str(i) + " incomplete due to z-plane failures.")
+                        if consecutive_failures >= self.max_consecutive_tile_failures:
+                            raise RuntimeError(
+                                f"{self.input_filename}: Aborting after {consecutive_failures} consecutive incomplete tiles."
+                            )
+                    else:
+                        consecutive_failures = 0
+                        self.processed_tile_count += 1
+                        logger.debug(self.input_filename + ": Tile " + str(i) + " complete.")
+
                     pbar.update(1)
+
+            if not self._stop_requested and self.failed_tile_count > 0:
+                raise RuntimeError(
+                    f"{self.input_filename}: Completed with {self.failed_tile_count} incomplete tile(s)."
+                )
         finally:
-            reader.close()
+            try:
+                reader.close()
+            except Exception as e:
+                logger.debug(self.input_filename + ": Error closing reader during cleanup: " + str(e))
 
     def crop_tiles_zarr(self, writers=0, tiles_per_shard=None, timer=None):
         """Crop tiles into the Zarr v3 tile store <output_dir>/<slide>.zarr (--tile_format zarr).
@@ -312,6 +324,11 @@ class NDPIFileCropper:
         slide_metadata['total_tile_count'] = self.total_tile_count
         slide_metadata['processed_tile_count'] = 0
         slide_metadata['percent_complete'] = 0.0
+
+        if self._stop_requested:
+            # exit_program() only sets this flag. During the crop zarr_mode installs its own handlers; a signal
+            # that arrived before that must still stop the run, with a non-zero exit status.
+            raise RuntimeError(self.input_filename + ": Stop requested before the crop started; nothing was written.")
 
         ImageReader = format_reader.make_image_reader_class()
         reader = ImageReader()
@@ -399,88 +416,12 @@ class NDPIFileCropper:
         return self.tile_format
 
     def exit_program(self, signum, frame):
-        """Exit the program."""
+        """Request a clean stop; leave JVM/reader cleanup to the main loop."""
         logger.info("Received signal: " + str(signum))
+        self._stop_requested = True
         self.write_metadata_before_exiting()
-        logger.info("Shutting down JVM.")
-        javabridge.kill_vm()
-        logger.info("Stopping NDPITileCropper CLI...")
-        # Zarr mode exits non-zero when it did not finish (the store stays incomplete; a rerun resumes it).
-        exit(1 if self.tile_format == 'zarr' else 0)
+        logger.info("Stop requested; finishing current cleanup...")
 
-
-def process_single_tile_parallel(args):
-    """Process a single tile in a separate process for parallel execution."""
-    import bioformats
-    import bioformats.formatreader as format_reader
-    import javabridge
-    from PIL import Image
-    import os
-    import glob
-    import logging
-    import time
-    import random
-    
-    # Set up logging for this process
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s')
-    logger = logging.getLogger(f"tile_processor_{args['tile_index']}")
-    
-    try:
-        # Add random delay to prevent JVM startup conflicts
-        time.sleep(random.uniform(0.1, 0.5))
-        
-        # Start JVM for this process with better isolation
-        javabridge.start_vm(
-            class_path=bioformats.JARS, 
-            run_headless=True,
-            max_heap_size='2g',
-            jvm_options=['-Djava.awt.headless=true', '-XX:+UseG1GC']
-        )
-        
-        # Create tile directory
-        tile_dir = os.path.join(args['crops_dir'], f"{args['start_x']}x_{args['start_y']}y")
-        if not os.path.exists(tile_dir):
-            os.makedirs(tile_dir)
-        
-        # Check if tile already exists
-        existing_files = glob.glob(os.path.join(tile_dir, f"*.{args['tile_format']}"))
-        if len(existing_files) >= args['z_planes'] and not args['overwrite_flag']:
-            logger.info(f"Tile {args['tile_index']} already exists. Skipping...")
-            return True
-        
-        # Process all z-planes for this tile
-        for z in range(args['z_planes']):
-            try:
-                # Read tile from NDPI file
-                ImageReader = format_reader.make_image_reader_class()
-                reader = ImageReader()
-                reader.setId(args['input_file_path'])
-                
-                img = reader.openBytesXYWH(z, args['start_x'], args['start_y'], args['width'], args['height'])
-                img.shape = (args['height'], args['width'], 3)
-                
-                # Save image
-                im = Image.fromarray(img)
-                im.save(os.path.join(tile_dir, f"{z}z.png"))
-                
-                reader.close()
-                
-            except Exception as e:
-                logger.error(f"Error processing z-plane {z} for tile {args['tile_index']}: {e}")
-                return False
-        
-        logger.info(f"Tile {args['tile_index']} completed successfully")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error processing tile {args['tile_index']}: {e}")
-        return False
-    finally:
-        # Clean up JVM
-        try:
-            javabridge.kill_vm()
-        except:
-            pass
 
 
 if __name__ == '__main__':
@@ -540,11 +481,9 @@ if __name__ == '__main__':
                 ndpi_file_cropper.zip_tiles()
 
     except Exception as e:
+        exit_code = 1
         logger.info("Exception in NDPITileCropper CLI")
         logger.error(e, exc_info=True)
-        if cli.args.tile_format == 'zarr':
-            # PNG mode keeps its exit status 0 (known issue); Zarr mode fails loudly.
-            exit_code = 1
     finally:
         # Write metadata before exiting
         ndpi_file_cropper.write_metadata_before_exiting()
@@ -562,5 +501,4 @@ if __name__ == '__main__':
         javabridge.kill_vm()
         logger.info("Stopping NDPITileCropper CLI")
 
-    if exit_code:
-        sys.exit(exit_code)
+    raise SystemExit(exit_code)

@@ -1,4 +1,4 @@
-"""PNG-mode compatibility with the base commit (ae045e0): option prefixes, exit codes, the tile grid."""
+"""PNG-mode compatibility with the base branch (PR #24): option prefixes, exit codes, the tile grid."""
 import importlib.util
 import os
 import sys
@@ -103,14 +103,14 @@ def test_every_unique_prefix_of_a_base_option_still_parses_the_same(capsys):
     assert parse(new, "--z", actions["--zip"])[:2] == ("ok", True)
 
 
-@pytest.mark.parametrize("case, extra_env, input_override", [
-    ("missing input", {}, "does not exist.tif"),
-    ("SIGTERM after 10 reads", {"INJECT_SIGNAL_AFTER": "10:SIGTERM"}, None),
-    ("SIGINT after 10 reads", {"INJECT_SIGNAL_AFTER": "10:SIGINT"}, None),
-    ("failed plane read", {"INJECT_FAIL": "1:112:0"}, None),
+@pytest.mark.parametrize("case, extra_env, input_override, expected", [
+    ("missing input", {}, "does not exist.tif", 1),
+    ("SIGTERM after 10 reads", {"INJECT_SIGNAL_AFTER": "10:SIGTERM"}, None, 0),
+    ("SIGINT after 10 reads", {"INJECT_SIGNAL_AFTER": "10:SIGINT"}, None, 0),
+    ("failed plane read", {"INJECT_FAIL": "1:112:0"}, None, 1),
 ])
-def test_png_mode_exit_status_is_unchanged(slide, tmp_path, case, extra_env, input_override):
-    """PNG mode exits 0 on exceptions, signals and read failures, as on the base commit (known issue, kept)."""
+def test_png_mode_exit_status_is_unchanged(slide, tmp_path, case, extra_env, input_override, expected):
+    """PNG mode exits 1 on exceptions and read failures and 0 when a signal stops it, as on the base branch."""
     inp = str(tmp_path / input_override) if input_override else slide
     codes = {}
     for side, cli in (("new", CLI), ("base", BASE_CLI)):
@@ -120,7 +120,7 @@ def test_png_mode_exit_status_is_unchanged(slide, tmp_path, case, extra_env, inp
         proc = run_cli(["-i", inp, "-o", str(out), "-s", "128", "-l", "16"], env_extra=extra_env, use_driver=True,
                        cli=cli)
         codes[side] = proc.returncode
-    assert codes["new"] == 0, case
+    assert codes["new"] == expected, case
     if "base" in codes:
         assert codes["new"] == codes["base"], (case, codes)
 
