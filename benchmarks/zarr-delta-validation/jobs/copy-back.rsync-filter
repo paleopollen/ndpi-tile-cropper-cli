@@ -1,0 +1,24 @@
+# rsync filter: copy reports, logs, CSVs and JSON back from Taiga, never tiles, stores or crops.
+# Used on the machine that collects the results:  rsync -av --prune-empty-dirs --exclude-from=<this file> <delta>:<root>/ <results>/
+# (--exclude-from, not --filter "merge": macOS openrsync sends a merge rule to the remote side, which cannot open it)
+# First match wins. Tile trees, stores and segment outputs are excluded whole; everything else keeps only small files.
+- g2-cropper/stores/
+- g2-cropper/png/
+- g3-seg/*/inputs/
+- g3-seg/*/png/
+- g3-seg/*/zarr_png_in/
+- g3-seg/*/zarr_store/
+- g3-seg/*/*-extract-pass*/
+- g3-debug/*/cli-nt*/
+- g3-debug2/*/cli-nt*/
+- full-seg/*/zarr/
++ */
++ *.txt
++ *.md
++ *.json
++ *.csv
++ *.log
++ *.out
++ *.tsv
++ *.sha256
+- *
