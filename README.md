@@ -111,8 +111,8 @@ images have it). PNG stays the default and its output is unchanged.
   `progress.json` (`missing_planes`). The store is still completed, but the run exits 1. Rerunning the same command
   re-reads only those planes.
 - **Exit status:** 0 when the store is complete with every plane present, 1 otherwise (read failures, a writer
-  error, an exception, or SIGINT/SIGTERM), and 2 for `--zip`, which cannot be combined with `zarr`. PNG mode keeps
-  its exit status (0, also after exceptions and signals).
+  error, an exception, or SIGINT/SIGTERM), and 2 for `--zip`, which cannot be combined with `zarr`. PNG mode exits
+  1 after an exception or an incomplete tile, and 0 when a signal stops it.
 - **Signals:** SIGINT or SIGTERM, to this process or to its whole process group (Ctrl-C, `scancel`), stop the
   reading; writer processes ignore both and finish the shard they hold, which is recorded before the run exits 1.
   The rerun resumes. SIGKILL (the OOM killer, or `scancel` after its grace period) loses the shards in flight; they
