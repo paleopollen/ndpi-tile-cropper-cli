@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Zarr vs HDF5 tile-storage benchmark: scripts, results and recommendation under `benchmarks/zarr-vs-hdf5/`. [#113](https://github.com/paleopollen/palyim-issues/issues/113)
+
 ### Changed
 - Update Zenodo URL in the README.
 

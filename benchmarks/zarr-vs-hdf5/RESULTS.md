@@ -168,3 +168,16 @@ coordinates) but keep the pixel layout interleaved, declaring axes `z y x c` wit
 any axis order as long as the axes are declared, so the store stays valid OME-Zarr for readers that honour the axes
 metadata; viewers that assume `c` first would need to be checked. If a tool insists on planar `czyx`, the price is
 the table above.
+
+## Follow-up (2026-11-25)
+
+The recommendation was adopted with the interleaved `z y x c` layout.
+
+- The stores live in the shared `palyim-io` library. The cropper writes them with `--tile_format zarr`
+  ([#117](https://github.com/paleopollen/palyim-issues/issues/117)) and segmentation reads and writes them
+  ([#118](https://github.com/paleopollen/palyim-issues/issues/118)).
+- Both modes were run on one full PAL and one full TADP slide on Delta
+  ([#120](https://github.com/paleopollen/palyim-issues/issues/120)). The tile pixels and the segments are the same
+  in both modes. Tile files drop from 33,751 to 945 (PAL) and from 50,422 to 1,208 (TADP), cropping takes 1:27:30
+  instead of 4:38:09 (PAL) and 2:39:54 instead of 28:20:40 (TADP), and the tile bytes are 1.48× and 1.31× the PNG
+  bytes.
