@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Delta validation of Zarr mode for the cropper and segmentation: job templates, comparison scripts and results under `benchmarks/zarr-delta-validation/`. [#120](https://github.com/paleopollen/palyim-issues/issues/120)
+
 ### Changed
 - Update Zenodo URL in the README.
 
