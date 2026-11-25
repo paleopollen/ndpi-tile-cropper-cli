@@ -16,12 +16,13 @@ RUN apt-get update && apt-get install -y \
 
 COPY requirements.txt constraints.txt ./
 
-# See Dockerfile: palyim-io comes from a local wheel until it is published.
-COPY wheels/palyim_io-0.1.0-py3-none-any.whl /tmp/wheels/
+# See Dockerfile: palyim-io comes from its release wheel in wheels/. Keep the version the same as there.
+ARG PALYIM_IO_VERSION=0.1.2
+COPY wheels/palyim_io-${PALYIM_IO_VERSION}-py3-none-any.whl /tmp/wheels/
 
 RUN pip install --no-cache-dir pip==26.3 \
  && pip install --no-cache-dir --only-binary :all: -c constraints.txt -r requirements.txt \
-        "/tmp/wheels/palyim_io-0.1.0-py3-none-any.whl[zarr]" \
+        "/tmp/wheels/palyim_io-${PALYIM_IO_VERSION}-py3-none-any.whl[zarr]" \
  && rm -rf /tmp/wheels
 
 COPY src/ndpi_tile_cropper_cli.py src/ndpi_tile_cropper_parallel_cli.py src/zarr_mode.py ./

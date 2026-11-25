@@ -30,14 +30,15 @@ cd ndpi-tile-cropper-cli
 
 ### Build Docker Images
 
-The images install [palyim-io](https://github.com/paleopollen/palyim-io) (the Zarr tile store) from a local wheel
-until that package is published. Build the wheel first and copy it into `wheels/` (ignored by git):
+The images install [palyim-io](https://github.com/paleopollen/palyim-io) (the Zarr tile store) from the wheel
+attached to its GitHub release. The repository is private, so download the wheel into `wheels/` (ignored by git)
+first; the version is `PALYIM_IO_VERSION` in the Dockerfiles:
 
 ```shell
-git clone <palyim-io repository> ../palyim-io   # until paleopollen/palyim-io exists
-(cd ../palyim-io && uv build --wheel)
-mkdir -p wheels && cp ../palyim-io/dist/palyim_io-0.1.0-py3-none-any.whl wheels/
+gh release download v0.1.2 -R paleopollen/palyim-io -p 'palyim_io-*.whl' -D wheels
 ```
+
+GitHub Actions does the same with the `PALYIM_IO_TOKEN` secret.
 
 Then build the images. On Apple Silicon add `--platform linux/amd64` (Bio-Formats' bundled libturbojpeg is x86_64 only):
 

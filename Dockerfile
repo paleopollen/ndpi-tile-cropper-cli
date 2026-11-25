@@ -20,14 +20,18 @@ RUN apt-get update && apt-get install -y \
 
 COPY requirements.txt constraints.txt ./
 
-# palyim-io is installed from a local wheel until paleopollen/palyim-io is published; build it first
-# (see "Building the images" in the README). --only-binary: python-javabridge must come from the girder
-# cp312 wheel (-f in requirements.txt), never from a source build.
-COPY wheels/palyim_io-0.1.0-py3-none-any.whl /tmp/wheels/
+# palyim-io (the Zarr tile store) comes from the wheel attached to its GitHub release. The repository is private,
+# so the wheel goes into wheels/ (kept out of git) before the build:
+#   gh release download v0.1.2 -R paleopollen/palyim-io -p 'palyim_io-*.whl' -D wheels
+# GitHub Actions does the same with the PALYIM_IO_TOKEN secret (.github/workflows/docker-publish.yml).
+# --only-binary: python-javabridge must come from the girder cp312 wheel (-f in requirements.txt), never from a
+# source build.
+ARG PALYIM_IO_VERSION=0.1.2
+COPY wheels/palyim_io-${PALYIM_IO_VERSION}-py3-none-any.whl /tmp/wheels/
 
 RUN pip install --no-cache-dir pip==26.3 \
  && pip install --no-cache-dir --only-binary :all: -c constraints.txt -r requirements.txt \
-        "/tmp/wheels/palyim_io-0.1.0-py3-none-any.whl[zarr]" \
+        "/tmp/wheels/palyim_io-${PALYIM_IO_VERSION}-py3-none-any.whl[zarr]" \
  && rm -rf /tmp/wheels
 
 COPY src/ndpi_tile_cropper_cli.py src/zarr_mode.py ./

@@ -48,6 +48,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # palyim-io is a private repository: fetch its release wheel into wheels/ before the Docker build
+      # (the Dockerfiles copy it from there). The version is the Dockerfile's PALYIM_IO_VERSION.
+      # PALYIM_IO_TOKEN: a token with read access to the contents of paleopollen/palyim-io.
+      - name: Download the palyim-io wheel
+        env:
+          GH_TOKEN: ${{ secrets.PALYIM_IO_TOKEN }}
+        run: |
+          V=$(sed -n 's/^ARG PALYIM_IO_VERSION=//p' "${{ matrix.dockerfile }}")
+          if [ -z "$V" ]; then
+            echo "::error::PALYIM_IO_VERSION not found in ${{ matrix.dockerfile }}"
+            exit 1
+          fi
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::The PALYIM_IO_TOKEN secret is not set, so the palyim-io v$V wheel cannot be downloaded from paleopollen/palyim-io"
+            exit 1
+          fi
+          gh release download "v$V" -R paleopollen/palyim-io -p 'palyim_io-*.whl' -D wheels
+          ls -l wheels
+
       # Install the cosign tool
       # https://github.com/sigstore/cosign-installer
       - name: Install cosign
